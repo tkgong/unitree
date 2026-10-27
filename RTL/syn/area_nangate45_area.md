@@ -26,6 +26,7 @@
 | alu_mul31_p2 | None | 7,357.0 | 9,219 | 7,164 | 1.29 | 31 x 31 + 233 stage flip-flops x 6 |
 | alu_mul31_en_p2 | None | 7,415.8 | 9,293 | 7,313 | 1.27 | 31 x 31 + select 62 b + 234 flip-flops x 6 |
 | alu_fold_H1 | 1 | 1.6 | 2 | 8 | 0.27 | add 1 b (increment) |
+| alu_fold_H2 | 3 | 4.0 | 5 | 15 | 0.33 | add 2 b (increment) |
 | alu_fold_H4 | 7 | 9.6 | 12 | 30 | 0.40 | add 4 b (increment) |
 | alu_fold_H5 | 10 | 12.5 | 16 | 38 | 0.42 | add 5 b (increment) |
 | alu_fold_H6 | 11 | 14.9 | 19 | 45 | 0.41 | add 6 b (increment) |

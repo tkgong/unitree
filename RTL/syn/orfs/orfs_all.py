@@ -14,11 +14,16 @@ SV = sorted(f for f in os.listdir(RTL) if f.endswith(".sv"))
 D = []
 for W in range(32, 42):
     D.append(("alu_lend", {"W": W}, False, [("ext", 1), ("ea", W), ("eb", W), ("a", W), ("b", W)], [("y", W)]))
-D += [("alu_add", {"W": 41}, False, [("a", 41), ("b", 41)], [("y", 41)]),
+for W in range(32, 42):
+    D.append(("alu_add", {"W": W}, False, [("a", W), ("b", W)], [("y", W)]))
+for H in (1, 4, 5, 6, 8, 9):
+    D.append(("alu_fold", {"H": H}, False, [("r", 32)], [("t", 31)]))
+D += [("alu_canon", {"W": 31}, False, [("t", 31)], [("y", 31)]),
       ("alu_mul31", {}, False, [("a", 31), ("b", 31)], [("y", 62)]),
       ("alu_mul31_p2", {}, True, [("a", 31), ("b", 31)], [("y", 62)]),
       ("alu_mul31_en_p2", {}, True, [("en", 1), ("a", 31), ("b", 31)], [("y", 62)]),
       ("alu_fold", {"H": 10}, False, [("r", 32)], [("t", 31)]),
+      ("alu_fold", {"H": 2}, False, [("r", 32)], [("t", 31)]),
       ("alu_fold31", {}, False, [("r", 32)], [("t", 31)]),
       ("alu_canon", {"W": 32}, False, [("t", 31)], [("y", 32)]),
       ("alu_negm31", {"W": 33}, False, [("t", 31)], [("y", 33)]),

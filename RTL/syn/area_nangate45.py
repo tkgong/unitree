@@ -27,7 +27,7 @@ CASES += [("alu_addp", {"W": 32}, P * 32, "add 32 b"),
           ("alu_mul31_en", {}, MUL * 31 * 31 + SEL * 62, "31 x 31 + select 62 b"),
           ("alu_mul31_p2", {}, MUL * 31 * 31 + 6 * 233, "31 x 31 + 233 stage flip-flops x 6"),
           ("alu_mul31_en_p2", {}, MUL * 31 * 31 + SEL * 62 + 6 * 234, "31 x 31 + select 62 b + 234 flip-flops x 6")]
-for H in (1, 4, 5, 6, 8, 9, 10):
+for H in (1, 2, 4, 5, 6, 8, 9, 10):
     CASES.append(("alu_fold", {"H": H}, P * H, f"add {H} b (increment)"))
 CASES += [("alu_fold", {"H": 31}, P * 31, "add 31 b (increment)"),
           ("alu_fold31", {}, P * 31, "add 31 b (increment)"),

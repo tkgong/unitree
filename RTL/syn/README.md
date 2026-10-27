@@ -5,6 +5,22 @@ The area numbers in `dse/TOP/README.md` come from a NAND2-equivalent gate model 
 multiplier 6.0 per partial-product bit, compare 1.5 / bit, register 6 / FF). This directory checks those prices
 against real standard-cell synthesis of the ALU modules in `RTL/`, on the Dana 336 PC (`ssh dana336`).
 
+## Where everything is, per unit
+
+| | ChaCha20 + BLAKE3 + Monolith (bz3, the baseline) | four primitives (bz) |
+|---|---|---|
+| ALU designs | `RTL/alu_*.sv` (the same modules; bz3 uses alu_lend / alu_add W = 32..41, alu_mul31_en_p2, alu_fold H = 2, 4, 8, 9, 10, alu_canon W = 32, alu_bar31, alu_xor; no engines, no alu_mul31 chain ranks, no alu_fold31 / alu_negm31) | all of `RTL/alu_*.sv` |
+| instance counts | `RTL/syn/bz3_alus.md` (from `dse/TOP/bz3/lane_mono_kl.inc` x 2 datapaths, `level_ops_axn.h`) | `RTL/syn/bz_alus.md`, `RTL/README.md` |
+| synthesis, area-only (Yosys + ABC, nangate45) | `RTL/syn/area_nangate45_area.md` (every module at every parameter value) | same file |
+| timing-driven placement, 1 ns (OpenROAD) | `RTL/syn/orfs_results.md` (37 designs, every one bz3 uses meets 1 ns: adders +0.26..+0.46 ns, two-stage multiplier +0.15 ns, folds / canon / Bars / xor >= +0.67 ns) | same file |
+| the inventory priced three ways | `RTL/syn/bz3_alus.md` (`python3 unit_alus.py bz3`) | `RTL/syn/bz_alus.md` |
+| bit-exact check of the RTL | `RTL/verify/run_tb.sh` (117 instances, 479,232 vectors, 0 mismatches) | same |
+
+bz3 ALU totals (2,258 instances): gate model 775,482 NAND2; area-only synthesis 652,019 um^2 (817,067 NAND2 eq);
+timing-driven at 1 ns 798,920 um^2 of ALU logic (1,001,153 NAND2 eq) plus the 30 two-stage multipliers' 233 stage
+flip-flops each (30 x 1,054 um^2 = 31,620 um^2 of sequential cells). bz: 3,049 instances, 1,477,139 NAND2 model,
+1,314,672 um^2 area-only, 1,377,332 um^2 timing-driven (+ 108 x 1,054 um^2 of multiplier stage flip-flops).
+
 ## Tools and library (dana336)
 
 | | |
