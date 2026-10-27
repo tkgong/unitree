@@ -1,0 +1,19 @@
+# build products, rebuilt by the scripts next to them:
+#   dse/TOP/verify/*.dll    sh dse/TOP/build_bz.sh (clang++ on the Vitis ap_int headers, see dse/verify/build_dll.sh)
+#   RTL/verify/*            sh RTL/verify/run_tb.sh (ref_alu.dll, vec/, tb_alu.vvp)
+#   merkle_baseline         build_cpu.sh / build_gpu*.sh / cargo build --release (p3mono)
+*.dll
+*.exp
+*.lib
+*.o
+*.obj
+*.pdb
+*.vvp
+*.pyc
+__pycache__/
+RTL/verify/vec/
+merkle_baseline/p3mono/target/
+merkle_baseline/cpu/obj/
+xsim.dir/
+*.jou
+*.wdb
