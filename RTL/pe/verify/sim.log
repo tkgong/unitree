@@ -1,0 +1,2 @@
+SUMMARY: 300 cycles x 1248 lanes compared, 354778 nonzero expected lanes, 0 mismatching lanes in 0 cycles
+tb_unit.sv:42: $finish called at 3001000 (1ps)

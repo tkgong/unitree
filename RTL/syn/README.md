@@ -27,7 +27,7 @@ flip-flops each (30 x 1,054 um^2 = 31,620 um^2 of sequential cells). bz: 3,049 i
 |---|---|
 | synthesis | Yosys 0.61+112 native (`synth -flatten`, `abc -liberty`, `stat -liberty`) |
 | library | NangateOpenCellLibrary_typical.lib, 45 nm, the ORFS `nangate45` platform (`~/eda/OpenROAD-flow-scripts/flow/platforms`); NAND2_X1 = 0.798 um^2, used to convert area to NAND2 equivalents |
-| place & route | OpenROAD from the `openroad/orfs:latest` docker image (ORFS flow, Yosys 0.68 inside). Synthesis, floorplan and timing-driven placement run; CTS dies with `illegal instruction` on this CPU (i7-10700K, no AVX-512), so the flow stops after placement |
+| place & route | OpenROAD from the `openroad/orfs:latest` docker image (ORFS flow, Yosys 0.68 inside), the full flow to `finish` (CTS, global + detailed route) with `LEC_CHECK=0`: the image's equivalence checker kepler-formal (run inside the CTS step) is built with AVX-512 and dies with `illegal instruction` on this CPU (i7-10700K, AVX2 only); OpenROAD itself is fine |
 | also present | asap7 (NLDM), sky130hd/hs, gf180, ihp-sg13g2 platforms; Verilator 5.004; no native OpenROAD / OpenSTA |
 
 ## Per module, area-only mapping (`area_nangate45.py`, results in `area_nangate45_area.md`)
@@ -118,10 +118,34 @@ dilutes the (adder / xor) sharing: the 3-primitive unit drops from +44.9% to +41
 because the registers and selects dominate the total. The multiplier is 65-70% of the unified ALU logic with Poseidon2
 and 41-43% without it.
 
-## OpenROAD, timing-driven, nangate45, 1 ns clock: every ALU (`orfs/orfs_all.py`, table in `orfs_results.md`)
+## OpenROAD, nangate45, 1 ns clock, after routing: every ALU (`orfs/orfs_all.py`, `orfs_results_route.md`)
+
+Each ALU between input and output registers, the full ORFS flow: synthesis, floorplan, timing-driven placement, CTS,
+global and detailed routing, finish; `openroad` reports on `6_final.odb` with the extracted parasitics (`6_final.spef`)
+and the propagated clock tree, plus the detailed-route DRC count. 37 designs (every module at every parameter value the
+units use):
+
+| design (between registers) | ALU logic um^2 | worst slack at 1 ns, routed | route DRC |
+|---|---:|---:|---:|
+| alu_lend W=32 .. 41 (10 runs) | 468 .. 630 | +0.209 .. +0.263, all met | 0 |
+| alu_add W=32 .. 41 (10 runs) | 339 .. 492 | +0.358 .. +0.444, all met | 0 |
+| alu_mul31, one stage (reference) | 5,992 | **-0.540, violated** | 0 |
+| alu_mul31_p2, two-stage Dadda | 5,390 | **+0.067, met** | 0 |
+| alu_mul31_en_p2 | 5,491 | **+0.116, met** | 0 |
+| alu_fold H = 1, 2, 4, 5, 6, 8, 9, 10 / alu_fold31 | 2 .. 35 / 131 | +0.669 .. +0.705 / +0.488 | 0 |
+| alu_canon W = 31 / 32 | 64 | +0.623 / +0.625 | 0 |
+| alu_negm31 W=33 | 1 | +0.704 | 0 |
+| alu_bar31 | 81 | +0.701 | 0 |
+| alu_xor | 102 | +0.685 | 0 |
+
+**Every ALU meets 1 ns after routing** (with the two-stage multiplier), no DRC. Routing costs the adders 0.02-0.05 ns
+against placement and the two-stage multiplier 0.065 ns (it keeps +0.067 ns). The tables below are the earlier
+placement-level runs (ideal clock), kept for the cell breakdown.
+
+## OpenROAD, timing-driven placement, nangate45, 1 ns clock (`orfs_all.py --target place`, `orfs_results.md`)
 
 Each ALU between input and output registers (generated wrappers under `orfs/gen/`), ORFS synth + floorplan +
-timing-driven placement with repair (CTS and routing not run, see above), `openroad` reports on `3_place.odb`. The
+timing-driven placement with repair, `openroad` reports on `3_place.odb` (ideal clock). The
 small modules get an explicit 90 x 90 um die (the power grid needs it); everything else 50% utilization.
 
 | design (between registers) | std-cell area um^2 | flip-flops | ALU logic um^2 | worst slack at 1 ns |
@@ -149,8 +173,7 @@ stretched any more); 108 multipliers in the unit would add 108 x 233 = 25,164 st
 and W grow by 3 (the x^5 chain has three ranks), the issue rate (II = 1) does not; the HLS sources are not changed here.
 
 Timing-driven synthesis makes the adders 1.5-1.8x their area-only mapping (X2 / X4 drive cells, MUX2 and HA cells).
-The 1 GHz of `dse/TOP/README.md` is now backed for every ALU by this flow (placement-level STA, ideal clock, nangate45);
-routing and CTS could not be run on this machine.
+The 1 GHz of `dse/TOP/README.md` is backed for every ALU by this flow, after routing (see above).
 
 ## Reproduce
 
@@ -158,5 +181,5 @@ routing and CTS could not be run on this machine.
 ssh dana336
 cd ~/unitree/RTL/syn && python3 area_nangate45.py --jobs 12 --out area_nangate45_area.md     # ~3 s
 python3 array_totals.py
-python3 orfs/orfs_all.py --jobs 4 --out orfs_results.md   # docker, ~3 min for all 20; stops at placement (CTS crashes on this CPU)
+python3 orfs/orfs_all.py --jobs 4 --out orfs_results_route.md   # docker, full flow with LEC_CHECK=0, ~15 min for all 37
 ```

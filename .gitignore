@@ -18,3 +18,5 @@ xsim.dir/
 *.jou
 *.wdb
 RTL/syn/orfs/work/
+RTL/pe/verify/vec/
+RTL/pe/verify/xsim.dir/

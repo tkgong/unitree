@@ -19,7 +19,7 @@ wiring in the generated datapath and stay in the HLS sources).
 | alu_canon.sv | `alu_canon #(W)` | `alu_canon<T>` | p -> 0 (W = output width, 31 or 32) | 128 (datapaths, W = 32) + 64 (engines, W = 31) |
 | alu_negm31.sv | `alu_negm31 #(W)` | `alu_negm31<W>` | p - t, zero-extended to W | 4 (engines, W = 33) |
 | alu_bar_chunk.sv | `alu_bar_chunk #(W)` | `alu_bar_chunk<W>` | Monolith Bars on one 8- or 7-bit chunk | 4 per alu_bar31 |
-| alu_bar31.sv | `alu_bar31` | `alu_bar31` | ALU-BAR: Bars S-box on a 31-bit element, 8 / 8 / 8 / 7 chunks | 2 (one per datapath, on slot 0) |
+| alu_bar31.sv | `alu_bar31` | `alu_bar31` | ALU-BAR: Bars S-box on a 31-bit element, 8 / 8 / 8 / 7 chunks | 16 (8 per datapath, one per Bars element; the C++ calls it in a loop of 8) |
 | alu_xor.sv | `alu_xor` | `alu_xor` | ALU-XOR: 64-bit xor, the ARX blocks' only own logic | 22 call sites in level_ops_axn.h (the ARX step functions, instantiated per block) |
 | rot31.sv | `rot31 #(R)` | `rot31<R>` | wiring: 2^R x mod p, a constant rotation (no logic) | - |
 

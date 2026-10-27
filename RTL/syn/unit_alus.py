@@ -26,7 +26,7 @@ if unit == "bz3":
     INV += [("alu_add", {"W": W}, 2 * n, "private adders") for W, n in {32: 19, 33: 3, 35: 5, 36: 3, 37: 7, 38: 5, 39: 8, 40: 2, 41: 1}.items()]
     INV += [("alu_mul31_en_p2", {}, 30, "multipliers (two-stage)")]
     INV += [("alu_fold", {"H": H}, 2 * n, "folds") for H, n in {2: 15, 4: 41, 8: 11, 9: 3, 10: 2}.items()]
-    INV += [("alu_canon", {"W": 32}, 62, "canon"), ("alu_bar31", {}, 2, "Bars"), ("alu_xor", {}, 1002, "64-bit xors (csynth bz3: 64,154 xor bits / 64)")]
+    INV += [("alu_canon", {"W": 32}, 62, "canon"), ("alu_bar31", {}, 16, "Bars"), ("alu_xor", {}, 798, "64-bit xors (counted in the generated unit, RTL/pe)")]
 else:
     INV = [("alu_lend", {"W": W}, 2 * n, "lent adders") for W, n in {32: 222, 33: 88, 34: 52, 35: 33, 36: 20, 37: 17, 38: 13, 39: 8, 40: 2, 41: 1}.items()]
     INV += [("alu_add", {"W": W}, 2 * n, "private adders") for W, n in {32: 57, 35: 5, 36: 3, 37: 7, 38: 5, 39: 8, 40: 2, 41: 1}.items()]
@@ -34,7 +34,7 @@ else:
     INV += [("alu_mul31_p2", {}, 76, "multipliers (two-stage)"), ("alu_mul31_en_p2", {}, 32, "multipliers (two-stage)")]
     INV += [("alu_fold", {"H": H}, 2 * n, "folds") for H, n in {1: 16, 4: 41, 5: 16, 6: 16, 8: 11, 9: 3, 10: 2}.items()]
     INV += [("alu_fold31", {}, 172, "folds"), ("alu_canon", {"W": 32}, 128, "canon"), ("alu_canon", {"W": 31}, 64, "canon"),
-            ("alu_negm31", {"W": 33}, 4, "negm31"), ("alu_bar31", {}, 2, "Bars"), ("alu_xor", {}, 1005, "64-bit xors")]
+            ("alu_negm31", {"W": 33}, 4, "negm31"), ("alu_bar31", {}, 16, "Bars"), ("alu_xor", {}, 1005, "64-bit xors (csynth xor bits / 64)")]
 def num(x): return float(x.replace(",", "")) if x and x not in ("-", "") else 0.0
 L = ["| ALU | instances | gate model NAND2 each | area-only um^2 each | timing-driven (1 ns) ALU logic um^2 each | slack | x instances: model NAND2 | area-only um^2 | timing-driven um^2 |",
      "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]

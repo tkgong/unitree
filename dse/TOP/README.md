@@ -58,8 +58,9 @@ utilization tables are identical) and the same percentages:
 The gate model's prices were checked against Nangate45 standard-cell synthesis of the ALUs (`RTL/syn/README.md`, 2026-10-27): the
 adders are within 3%, the 31 x 31 multiplier is 1.39x the model, increments / canon / negm31 are over-priced; with the measured
 multiplier and xor factors the ALU sharing is +37.0% (not +39.2%) and the total +32.0% (not +32.5%). The multiplier does
-not close 1 ns as one stage in that library (1.45 ns); as a two-stage Dadda tree it does (+0.13 ns), and every other ALU meets
-1 ns with margin (`RTL/syn/orfs_results.md`), so 1 GHz holds for the ALUs with the multiplier ranks at two pipeline levels.
+not close 1 ns as one stage in that library (1.45 ns); as a two-stage Dadda tree it does (+0.067 ns after routing), and every other ALU meets
+1 ns after routing with margin (`RTL/syn/orfs_results_route.md`), so 1 GHz holds for the ALUs with the multiplier ranks at two
+pipeline levels. The bz3 unit itself is generated in SystemVerilog from these ALUs in `RTL/pe` (two PEs, verified against this C++).
 
 | unit | gates | logic | ALU | registers | total |
 |---|---:|---:|---:|---:|---:|

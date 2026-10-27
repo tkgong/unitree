@@ -19,7 +19,7 @@ INV += [("alu_mul31", 76, "multipliers"), ("alu_mul31_en", 32, "multipliers")]
 for H, n in {1: 16, 4: 41, 5: 16, 6: 16, 8: 11, 9: 3, 10: 2}.items():
     INV.append((f"alu_fold_H{H}", 2 * n, "folds"))
 INV += [("alu_fold31", 172, "folds"), ("alu_canon_W32", 128, "canon"), ("alu_canon_W31", 64, "canon"),
-        ("alu_negm31_W33", 4, "negm31"), ("alu_bar31", 2, "Bars"),
+        ("alu_negm31_W33", 4, "negm31"), ("alu_bar31", 16, "Bars"),
         ("alu_xor", 1005, "64-bit xors (csynth: 64,318 xor bits in bz_16f / 64)")]
 cat = {}
 for row, n, label in INV:

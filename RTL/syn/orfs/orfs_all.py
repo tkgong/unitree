@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Every ALU through the OpenROAD flow (ORFS docker image, nangate45, 1 ns clock) up to timing-driven placement, each
-module between input and output registers (generated wrapper), then openroad's design area, cell classes and worst
-slack on 3_place.odb. CTS / routing are not run (the image's OpenROAD dies in CTS on this CPU: illegal instruction).
-    python3 orfs_all.py [--jobs 4] [--only tag,tag] [--out orfs_results.md]        (repo at ~/unitree)"""
+"""Every ALU through the OpenROAD flow (ORFS docker image, nangate45, 1 ns clock), each module between input and output
+registers (generated wrapper). --target finish (default): synth, floorplan, place, CTS, global + detailed route, finish;
+openroad then reports area, cell classes and the worst slack on 6_final.odb with the extracted parasitics (6_final.spef,
+propagated clock), plus the detailed-route DRC count. --target place stops after placement (3_place.odb, ideal clock).
+LEC_CHECK=0: ORFS's equivalence check (kepler-formal) is built with AVX-512 and dies with SIGILL on CPUs without it.
+    python3 orfs_all.py [--jobs 4] [--only tag,tag] [--target finish|place] [--out orfs_results.md]   (repo at ~/unitree)"""
 import argparse, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 ap = argparse.ArgumentParser(); ap.add_argument("--jobs", type=int, default=4); ap.add_argument("--only", default="")
-ap.add_argument("--out", default=""); ap.add_argument("--period", default="1.0"); A = ap.parse_args()
+ap.add_argument("--out", default=""); ap.add_argument("--period", default="1.0")
+ap.add_argument("--target", default="finish", help="place (stop after placement) or finish (CTS, route, finish)"); A = ap.parse_args()
+ODB = "3_place" if A.target == "place" else "6_final"
 REPO = os.path.expanduser("~/unitree"); RTL = os.path.join(REPO, "RTL"); HERE = os.path.join(RTL, "syn", "orfs")
 GEN = os.path.join(HERE, "gen"); WORK = os.path.join(HERE, "work"); os.makedirs(GEN, exist_ok=True); os.makedirs(WORK, exist_ok=True)
 SV = sorted(f for f in os.listdir(RTL) if f.endswith(".sv"))
@@ -52,8 +56,9 @@ export PLACE_DENSITY = 0.70
 export TNS_END_PERCENT = 100
 """)
     open(os.path.join(d, "report.tcl"), "w").write(f"""read_liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
-read_db /work/RTL/syn/orfs/work/{tag}/results/nangate45/{tag}/base/3_place.odb
-read_sdc /work/RTL/syn/orfs/work/{tag}/results/nangate45/{tag}/base/2_floorplan.sdc
+read_db /work/RTL/syn/orfs/work/{tag}/results/nangate45/{tag}/base/{ODB}.odb
+read_sdc /work/RTL/syn/orfs/work/{tag}/results/nangate45/{tag}/base/{"2_floorplan" if ODB == "3_place" else "6_final"}.sdc
+{"" if ODB == "3_place" else "read_spef /work/RTL/syn/orfs/work/" + tag + "/results/nangate45/" + tag + "/base/6_final.spef" + chr(10) + "set_propagated_clock [all_clocks]"}
 report_design_area
 report_cell_usage
 report_wns
@@ -63,14 +68,14 @@ report_checks -path_delay max -digits 3
     return tag, top
 def docker(cmd, log):
     uid = os.getuid(); gid = os.getgid()
-    return subprocess.run(["docker", "run", "--rm", "-u", f"{uid}:{gid}", "-e", "HOME=/tmp", "-e", "NUM_CORES=4", "-v", f"{REPO}:/work",
+    return subprocess.run(["docker", "run", "--rm", "-u", f"{uid}:{gid}", "-e", "HOME=/tmp", "-e", "NUM_CORES=4", "-e", "LEC_CHECK=0", "-v", f"{REPO}:/work",
                            "openroad/orfs:latest", "bash", "-c", cmd], stdout=open(log, "w"), stderr=subprocess.STDOUT)
 def run(case):
     mod, params, clk, ins, outs = case; tag, top = gen(mod, params, clk, ins, outs)
     w = os.path.join(WORK, tag); os.makedirs(w, exist_ok=True)
-    r = docker(f"cd /OpenROAD-flow-scripts/flow && make DESIGN_CONFIG=/work/RTL/syn/orfs/gen/{tag}/config.mk WORK_HOME=/work/RTL/syn/orfs/work/{tag} place",
+    r = docker(f"cd /OpenROAD-flow-scripts/flow && make DESIGN_CONFIG=/work/RTL/syn/orfs/gen/{tag}/config.mk WORK_HOME=/work/RTL/syn/orfs/work/{tag} LEC_CHECK=0 {A.target}",
                os.path.join(w, "make.log"))
-    if r.returncode != 0: return (tag, None, f"make place failed, see work/{tag}/make.log")
+    if r.returncode != 0: return (tag, None, f"make {A.target} failed, see work/{tag}/make.log")
     rep = os.path.join(w, "report.log")
     docker(f"/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -exit /work/RTL/syn/orfs/gen/{tag}/report.tcl", rep)
     s = open(rep, errors="ignore").read()
@@ -80,14 +85,16 @@ def run(case):
            "buf_area": g(r"Timing Repair Buffer\s+\d+\s+([\d.]+)"), "comb_area": g(r"Multi-Input combinational cell\s+\d+\s+([\d.]+)"),
            "inv_area": g(r"Inverter\s+\d+\s+([\d.]+)"), "tap_area": g(r"Tap cell\s+\d+\s+([\d.]+)"), "total": g(r"Total\s+\d+\s+([\d.]+)"),
            "path": " -> ".join(re.findall(r"\(([A-Z][A-Z0-9_]+)\)\n", s.split("data arrival time")[0])[-40:])}
+    drc = os.path.join(w, "reports", "nangate45", tag, "base", "5_route_drc.rpt")
+    row["drc"] = (sum(1 for l in open(drc, errors="ignore") if l.lstrip().startswith("violation type")) if os.path.exists(drc) else 0) if A.target != "place" else None
     return (tag, row, "")
 cases = [c for c in D if not A.only or tag_of(c[0], c[1]) in A.only.split(",")]
 with ThreadPoolExecutor(A.jobs) as ex: R = list(ex.map(run, cases))
-L = ["| design (between registers) | std-cell area um^2 | flip-flops | repair buffers um^2 | ALU logic um^2 (comb + inv) | worst slack at " + A.period + " ns | met |",
-     "|---|---:|---:|---:|---:|---:|---|"]
+L = ["| design (between registers) | std-cell area um^2 | flip-flops | repair buffers um^2 | ALU logic um^2 (comb + inv) | worst slack at " + A.period + " ns | met | route DRC |",
+     "|---|---:|---:|---:|---:|---:|---|---:|"]
 for tag, row, err in R:
     if row is None: L.append(f"| {tag} | FAILED | | | | | {err} |"); continue
     f = lambda k: float(row[k] or 0)
-    L.append(f"| {tag} | {f('total'):,.0f} | {int(row['seq'] or 0)} ({f('seq_area'):,.0f}) | {f('buf_area'):,.0f} | {f('comb_area') + f('inv_area'):,.0f} | {f('wns'):+.3f} | {'yes' if f('wns') >= 0 else 'NO'} |")
+    L.append(f"| {tag} | {f('total'):,.0f} | {int(row['seq'] or 0)} ({f('seq_area'):,.0f}) | {f('buf_area'):,.0f} | {f('comb_area') + f('inv_area'):,.0f} | {f('wns'):+.3f} | {'yes' if f('wns') >= 0 else 'NO'} | {row['drc'] if row['drc'] is not None else '-'} |")
 txt = "\n".join(L); print(txt)
 if A.out: open(A.out, "w").write(txt + "\n")
