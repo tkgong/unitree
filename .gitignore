@@ -17,3 +17,4 @@ merkle_baseline/cpu/obj/
 xsim.dir/
 *.jou
 *.wdb
+RTL/syn/orfs/work/

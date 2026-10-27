@@ -9,7 +9,7 @@ wiring in the generated datapath and stay in the HLS sources).
 |---|---|---|---|---:|
 | alu_add.sv | `alu_add #(W)` | `alu_add<W>` | ALU-ADD: the lendable W-bit adder, plain integer add (no modulus: the ARX side takes y[31:0] = mod 2^32, the M31 side folds once at the end of its adder tree) | 912 (W = 32..41: 444 / 176 / 104 / 66 / 40 / 34 / 26 / 16 / 4 / 2) |
 | alu_lend.sv | `alu_lend #(W)` | `alu_lend<W>` | the operand select in front of it: ARX operands (ea, eb) when `ext`, else the datapath's (a, b) | 912 |
-| alu_addp.sv | `alu_addp #(W)` | `alu_addp<W>` | ALU-ADP: private adder (engine part sums / constants, reduction first adders that are not lent) | 236 datapaths (W = 32..41) + 268 engines (W = 32..35) |
+| alu_addp.sv | `alu_addp #(W)` | `alu_addp<W>` | ALU-ADP: private adder (engine part sums / constants, reduction first adders that are not lent) | 176 datapaths (W = 32..41) + 268 engines (W = 32..35) |
 | alu_lendp.sv | `alu_lendp #(W)` | `alu_lendp<W>` | lend select in front of a private adder (builds without MONO_LEND_MOD; not in bz) | 0 |
 | alu_mul31.sv | `alu_mul31` | `alu_mul31` | ALU-MUL: 31 x 31 -> 62 (chain ranks 2 and 3 of x^5, the engines' products) | 64 (datapaths) + 12 (engines) |
 | alu_mul31_en.sv | `alu_mul31_en` | `alu_mul31_en` | the same, 0 when the issue has no Bricks (rank 1) | 32 (datapaths) |
