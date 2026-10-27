@@ -224,8 +224,9 @@ if MEMSIM:
         HMAP = next((a[5:] for a in sys.argv[5:] if a.startswith("hmap=")), "RoBaRaCoCh")
         HPORT = int(next((a[6:] for a in sys.argv[5:] if a.startswith("hport=")), str(HCH)))   # accesses the SRAM side can send per cycle
         HLAY = next((a[5:] for a in sys.argv[5:] if a.startswith("hlay=")), "block")   # HBM layout of the stored nodes
-        HB = hbmlib.HBM(HCH, HMAP)
-        BW = float(HB.peak)
+        HNBL = int(next((a[5:] for a in sys.argv[5:] if a.startswith("hnbl=")), "2"))   # 2: JEDEC HBM2 burst; 4: the Ramulator2 preset (UniZK's model as is)
+        HBMX = hbmlib.HBM(HCH, HMAP, HNBL)
+        BW = float(HBMX.peak)
     rsent = {}; rlat = [0, 0, 0]                                                     # hbm=: reads in flight (node id -> send cycle); latency n / sum / max
     STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
     KSK = int(STORE[1:]) if STORE.startswith("k") else (0 if STORE == "all" else 1 << 30)   # levels (above the leaves) not stored
@@ -463,20 +464,20 @@ if MEMSIM:
                 if q is rq:
                     if used + 1 > CAP or (REQ == "merkle" and (x.idx >> TK) > cur_tile + 1): break   # no room / beyond the double buffer
                     a = addr("level", lam(x), x.idx)                                  # Merkle leaves (the leaf array) / the GGM root seed
-                    if not HB.send(a, False, x.id): break                             # in order: a full controller queue stalls the stream
+                    if not HBMX.send(a, False, x.id): break                             # in order: a full controller queue stalls the stream
                     if AUDIT: assert not x.res and not x.rinf, "read twice"
                     q.popleft(); n += 1; act = True
                     used += 1; x.rinf = True; rsent[x.id] = t; peak()                 # the slot is reserved when the read is sent
                     if AUDIT: hadd(x, 1); chk()
                     RROWS.touch(a // ROWB)
                 else:
-                    if not HB.send(addr(HLAY, lam(x), x.idx), True, x.id): break
+                    if not HBMX.send(addr(HLAY, lam(x), x.idx), True, x.id): break
                     if AUDIT: assert x.res and x.nw and not x.wr, "write of a value not computed / not to be written / twice"
                     q.popleft(); n += 1; act = True
                     hbm_wr += 32; x.wr = True; x.nwr += 1; mem_free(x); wpend -= 1  # the data left the SRAM: it is in the controller's write buffer
                     for L in LAYOUTS: WROWS[L].touch(addr(L, lam(x), x.idx) // ROWB)
                     if REQ == "ggm" and x.level == SZ: open_budget -= 1
-        for tag in HB.tick():                                                         # reads that completed this memory clock
+        for tag in HBMX.tick():                                                         # reads that completed this memory clock
             x = nodes[tag]; x.rinf = False; x.res = True; hbm_rd += 32
             d = t + 1 - rsent.pop(tag); rlat[0] += 1; rlat[1] += d; rlat[2] = max(rlat[2], d)
             if REQ == "merkle":
@@ -760,7 +761,7 @@ def print_open():
         if HBMSIM:                                                                    # the same batch through the HBM2 model, in address order
             res = []
             for L in LAYOUTS:
-                cyc, st, lat = hbmlib.batch(sorted(addr(L, l, j) for (l, j) in rd), HCH, HMAP, port=HPORT)
+                cyc, st, lat = hbmlib.batch(sorted(addr(L, l, j) for (l, j) in rd), HCH, HMAP, port=HPORT, nbl=HNBL)
                 res.append(f"{L} {cyc:,} cycles ({len(rd) * 32 / cyc:.1f} B/cycle, ACT {st['ACT']:,}, row hit {100 * st['row_hit']:.0f}%, latency avg {sum(lat) / max(1, len(lat)):.0f})")
             print(f"          HBM2 {HCH} ch: " + "; ".join(res))
 if OPENONLY:
@@ -881,10 +882,12 @@ if MEMSIM:
           f"waiting for the HBM write {kb(brk_max[1])} / {kb(brk_sum[1] / brk_n)}, inputs waiting for their consumer {kb(brk_max[2])} / {kb(brk_sum[2] / brk_n)}")
     print(f"    HBM               read {hbm_rd / 1e6:,.2f} MB, write {hbm_wr / 1e6:,.2f} MB = {(hbm_rd + hbm_wr) / cycles:,.1f} B/cycle average; transferring in {dma_cycles:,} of {cycles:,} cycles ({100 * dma_cycles / cycles:.0f}%)")
     if HBMSIM:
-        st = HB.stats()
-        print(f"    HBM2 model        {HB.describe()}; SRAM side sends <= {HPORT} accesses/cycle; stored nodes in the {HLAY} layout")
+        drain = 0                                                                     # writes the controllers accepted but had not issued at the last cycle
+        while HBMX.cmd("WR") + HBMX.cmd("WRA") < hbm_wr // 32 and drain < 1_000_000: HBMX.tick(); drain += 1
+        st = HBMX.stats()
+        print(f"    HBM2 model        {HBMX.describe()}; SRAM side sends <= {HPORT} accesses/cycle; stored nodes in the {HLAY} layout")
         print(f"    HBM2 commands     ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
-              f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation")
+              f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation; write buffers drained {drain} cycles after the last cycle")
         print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
 print(f"  check: all GGM leaves / Merkle roots and parents vs Python reference: {'OK' if ok else 'FAIL'}")

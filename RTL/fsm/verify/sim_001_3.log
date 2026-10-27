@@ -1,0 +1,4 @@
+BLAKE3 run 0: 84 cycles, 3 blocks
+BLAKE3 run 1: 84 cycles, 3 blocks
+SUMMARY: HAS_MONO 0 HAS_CC 0 HAS_B3 1 NB 3: 2 runs, 0 mismatching words
+tb_pe.sv:70: $finish called at 1740000 (1ps)

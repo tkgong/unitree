@@ -3,6 +3,9 @@
 #   - org.channel_width: 128, the HBM2 legacy channel: one RD / WR moves 2 (prefetch) x 128 bit = 32 B = one value slot of
 #     our SRAM; 32 columns x 32 B = 1 KB rows, the row size the layouts in compile_tree.py assume
 #   - channel: set per run (memsim/hbm.py passes MemorySystem.DRAM.org.channel=N); 8 channels = one HBM2 stack
+#   - timing.nBL: 2. A pseudochannel (64 DQ, BL4 at 2 Gb/s) moves 32 B in 2 tCK (JEDEC: 32 GB/s per 128-bit channel). The
+#     Ramulator2 preset has nBL 4, i.e. one 32 B access per 4 tCK per pseudochannel = 16 B/cycle per channel, half the JEDEC
+#     rate (UniZK counts 64 B per request, which makes up the factor). Measured: memsim/results/bench_hbm.md.
 # Kept from UniZK: HBM2_4Gb, HBM2_2Gbps (tCK 1 ns = the unit's 1 GHz clock, one memory tick per unit cycle), Generic
 # controller, FR-FCFS, all-bank refresh, RoBaRaCoCh address mapping. Peak: 32 B per channel per cycle (32 GB/s at 1 GHz).
 Frontend:
@@ -20,6 +23,7 @@ MemorySystem:
       channel_width: 128
     timing:
       preset: HBM2_2Gbps
+      nBL: 2
 
   Controller:
     impl: Generic

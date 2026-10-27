@@ -1,0 +1,91 @@
+# memsim - UniZK's HBM model (Ramulator2 / RamSim) as the HBM of our tree simulator
+
+`dse/TOP/verify/compile_tree.py` models the on-chip SRAM exactly (32 B slots, never exceeded, audited) but the HBM as an
+ideal pipe: `bw=<B/cycle>`, reads and writes share it, no latency, no banks, no row buffer, no refresh. This folder replaces
+that pipe with the cycle-level DRAM model UniZK uses: their RamSim, a fork of Ramulator2 (`ramsim/`, MIT, from
+`D:\UniZK\thirdparty\ramsim`, commit 9c94b55 of the UniZK repo).
+
+## What is ported, what differs
+
+| | UniZK | here |
+|---|---|---|
+| DRAM, controller, scheduler, refresh, address mapping | Ramulator2 HBM2_4Gb, HBM2_2Gbps, Generic controller, FR-FCFS, all-bank refresh, RoBaRaCoCh | the same code; RoBaRaCoCh by default, MOP4CLXOR compared |
+| frontend | open loop: the Rust model writes a trace (address, size, dependencies, a fixed compute delay per buffer block), `TraceGen` replays it | closed loop: `compile_tree.py` is the frontend. Every cycle it sends the reads / writes its SRAM model allows, ticks the HBM once, takes back the reads that completed |
+| access size | 64 B per request (a request of n bytes = n / 64 requests) | 32 B per access = one SRAM slot (`channel_width: 128`: 2 x 128 bit), 1 KB rows |
+| burst | preset nBL 4 | nBL 2 (JEDEC HBM2: a 64-bit pseudochannel moves 32 B with BL4 in 2 tCK). With 32 B accesses the preset gives half the JEDEC rate; `hnbl=4` runs the preset |
+| channels | 128 | 1-8 per run (8 = one HBM2 stack, 256 GB/s) |
+| clock | accelerator and DRAM 1:1 | the same: tCK 1 ns = the unit's 1 GHz |
+| SRAM | read / write buffers per kernel, double buffering by block | ours, unchanged: a read reserves its slot when it is sent and is on chip when the HBM returns it; a write frees its slot when the controller accepts it (as RamSim) |
+
+Files:
+
+| file | what |
+|---|---|
+| `ramsim/` | UniZK's RamSim (Ramulator2). Changes: `src/base/utils.h` includes `<cstdint>` (g++ 13); `CMakeLists.txt` adds `../hbm_capi.cpp` to `libramulator.so` |
+| `hbm_capi.cpp` | C interface (`hbm_new / hbm_send / hbm_tick / hbm_cmd`) and a controller plugin counting the issued commands (ACT, PRE, RD, WR, REF) |
+| `hbm2.yaml` | our HBM: UniZK's config with the GEM5 (external) frontend, 128-bit channels, nBL 2, the channel count set per run |
+| `hbm.py` | ctypes wrapper (`HBM`, `batch`) |
+| `bench_hbm.py` | calibration: achieved B/cycle against the peak for sequential / random / row-sized patterns |
+| `sweep.py` | the README memory-model workloads on the ideal pipe and on HBM2 at the same peak |
+| `build_linux.sh` | builds `libramulator.so`, fetches Xilinx's open-source `ap_int` headers, builds the unit as `dse/TOP/verify/lz_16.so` / `lz3_16.so` and runs `check_axn.py` on them |
+| `results/` | `bench_hbm.md`, `sweep.md`, `logs/` (every run's full output) |
+
+`compile_tree.py` options: `hbm=<channels>` (on instead of `bw=`), `hmap=RoBaRaCoCh|MOP4CLXOR|ChRaBaRoCo`, `hnbl=2|4`,
+`hport=<n>` (accesses sent per cycle, default = channels), `hlay=block|level|tile` (where stored nodes go). With `open=`, every
+layout's open batch is also timed on the HBM2 model. The run prints the HBM2 commands, row-hit rate, bytes per activation,
+read latency (send to data on chip) and how long the write buffers took to drain after the last cycle.
+
+## Run (Linux; dana336)
+
+```bash
+sh memsim/build_linux.sh                 # ~3.5 min: libramulator.so, ap_types, lz_16.so, lz3_16.so, check_axn ALL OK
+python3 memsim/bench_hbm.py 1 2 4 8 --nbl 2 --nbl 4 --map RoBaRaCoCh --map MOP4CLXOR --md memsim/results/bench_hbm.md
+python3 memsim/sweep.py 14                # every run with audit and the bit-exact check
+cd dse/TOP && python3 verify/compile_tree.py verify/lz_16.so merkle blake3 16 sram=64 hbm=8 store=all audit open=1,64
+```
+
+## Results (dana336, 2026-10-27; every run `audit` OK and bit-exact; full tables `results/bench_hbm.md`, `results/sweep.md`, logs in `results/logs/`)
+
+**Calibration** (`bench_hbm.py`, 32,768 accesses of 32 B per pattern, achieved B/cycle of the peak 32 B per channel per cycle):
+
+| pattern | 1 channel | 8 channels | row hit | read latency avg / max |
+|---|---:|---:|---:|---|
+| sequential read, nBL 2 (JEDEC burst) | 25.7 (80%) | 208 (81%) | 97% | 50 / 66 |
+| sequential read, MOP4CLXOR mapping | 29.9 (94%) | 240 (94%) | 97% | 44 / 76 |
+| sequential read, Ramulator preset nBL 4 (UniZK as is) | 16.0 (50%) | 127 (50%) | 97% | 77 / 128 |
+| random 32 B read | 8.8 (27%) | 67 (26%) | 0% | 136 / 241 |
+| random 1 KB row, read whole | 21.2 (66%) | 163 (64%) | 74-97% | 59 / 105 |
+
+With UniZK's preset (nBL 4) a 32 B access occupies a pseudochannel for 4 tCK, so a channel gives 16 B/cycle = half the
+JEDEC rate; UniZK's traces count 64 B per request, which hides the factor. `hbm2.yaml` sets nBL 2. The remaining 20% under
+the peak on sequential reads is the controller (one command per cycle per channel, read/write turnarounds, refresh).
+
+**The tree programs** (64 KB SRAM, 2^18 ARX / 2^16 ZK, same peak bandwidth for the ideal pipe and the HBM2 model):
+
+| workload | memory | peak B/cycle | cycles | vs ideal pipe at that peak |
+|---|---|---:|---:|---:|
+| BLAKE3 Merkle 2^18, store=all | ideal 172 (README) | 172 | 99,250 | |
+| | HBM2 8 ch | 256 | 98,434 | +0.1% |
+| | HBM2 4 ch | 128 | 174,118 | +31.2% (ideal 128: 132,671) |
+| | HBM2 8 ch, nBL 4 (UniZK preset) | 256 | 154,175 | +56.8% |
+| ChaCha20 GGM 2^18, store=all | HBM2 8 ch | 256 | 98,058 | +0.0% |
+| | HBM2 4 ch | 128 | 163,144 | +23.2% |
+| BLAKE3 GGM 2^18, store=all | HBM2 8 ch | 256 | 98,085 | +0.0% |
+| BLAKE3 Merkle 2^18, store=out | HBM2 4 ch | 128 | 98,451 | +0.0% |
+| | HBM2 2 ch | 64 | 165,615 | +24.5% (MOP4CLXOR +6.6%) |
+| Monolith Merkle 2^16, store=all | HBM2 1 ch | 32 | 231,358 | +0.0% |
+| Poseidon2 Merkle 2^16, store=all | HBM2 1 ch | 32 | 299,411 | +0.0% |
+| | HBM2 1 ch, nBL 4 | 32 | 327,934 | +9.5% |
+
+- One HBM2 stack (8 channels, 256 B/cycle peak) runs every ARX workload at the compute bound (+0.0-0.1% over the ideal
+  pipe); the write stream is sequential (block rows staged in SRAM, ~650-940 B per activation, 95-97% row hits).
+- Half a stack (4 channels, 128 B/cycle) is not enough for store=all at 2^18: the programs need ~170 B/cycle, and the
+  HBM2 delivers 96-103 of the 128 (the ideal pipe at 128 is already +34%); store=out fits in 4 channels.
+- The ZK hashes need one channel. UniZK's burst preset (nBL 4) costs +51-57% on the ARX workloads and +9.5% on Poseidon2.
+- RoBaRaCoCh (UniZK's mapping) beats MOP4CLXOR on the write stream (+17-22% vs +0.0% at 8 channels): the staged rows are
+  written whole, and interleaving them over bank groups breaks the row hits.
+- Reads (Merkle leaves) see 66-78 cycles of latency on average under load; the SRAM double buffer hides it (the GGM
+  programs read one seed only).
+- Open batches (2^22, q = 1,024, 12,430 node reads on 8 channels): level 4,773 cycles, tile 4,863, block 5,971. The block
+  layout has the fewest activations (8,774 vs 9,266) but the batch is a single address-ordered stream, so the fewer, longer
+  rows serialize on fewer channels; per 1,024 openings the open costs ~5,000 cycles against a 1.55 M-cycle commit.

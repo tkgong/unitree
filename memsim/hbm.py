@@ -34,11 +34,11 @@ def lib():
 class HBM:
     CMDS = ("ACT", "PRE", "PREA", "RD", "WR", "RDA", "WRA", "REFab", "REFsb")
 
-    def __init__(s, channels=8, mapper="RoBaRaCoCh", yaml=None, extra=()):
-        L = lib()
-        ov = [f"MemorySystem.DRAM.org.channel={channels}", f"MemorySystem.AddrMapper.impl={mapper}", *extra]
+    def __init__(s, channels=8, mapper="RoBaRaCoCh", nbl=2, yaml=None, extra=()):
+        L = lib()                                    # nbl=2: JEDEC HBM2 burst (hbm2.yaml); nbl=4: the Ramulator2 preset
+        ov = [f"MemorySystem.DRAM.org.channel={channels}", f"MemorySystem.AddrMapper.impl={mapper}", f"MemorySystem.DRAM.timing.nBL={nbl}", *extra]
         s.h = L.hbm_new((yaml or os.path.join(HERE, "hbm2.yaml")).encode(), "\n".join(ov).encode())
-        s.L, s.channels, s.mapper = L, channels, mapper
+        s.L, s.channels, s.mapper, s.nbl = L, channels, mapper, nbl
         s.peak = TX * channels                       # B per cycle
         s.tck = L.hbm_tck_ns(s.h)
         s._buf = (ctypes.c_uint64 * 65536)()
@@ -64,13 +64,13 @@ class HBM:
 
     def describe(s):
         return (f"Ramulator2 HBM2 (UniZK RamSim): {s.channels} channel(s) x 128 bit at 2 Gb/s, tCK {s.tck:g} ns, {TX} B per access, "
-                f"1 KB rows, FR-FCFS, all-bank refresh, {s.mapper}; peak {s.peak} B/cycle")
+                f"nBL {s.nbl}, 1 KB rows, FR-FCFS, all-bank refresh, {s.mapper}; peak {s.peak} B/cycle")
 
 
-def batch(addrs, channels=8, mapper="RoBaRaCoCh", write=False, port=None, max_cycles=10_000_000):
+def batch(addrs, channels=8, mapper="RoBaRaCoCh", write=False, port=None, max_cycles=10_000_000, nbl=2):
     """Issue the 32 B accesses in order (as many per cycle as the controllers take, at most `port`), until all reads have
     returned -> (cycles, stats, latencies of the reads). The open phase and the microbenchmarks use it."""
-    m = HBM(channels, mapper); port = port or channels
+    m = HBM(channels, mapper, nbl); port = port or channels
     i, t, out, sent = 0, 0, 0, {}
     lat = []
     while (i < len(addrs) or sent) and t < max_cycles:

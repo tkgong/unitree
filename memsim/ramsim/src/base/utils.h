@@ -1,6 +1,7 @@
 #ifndef RAMULATOR_BASE_UTILS_H
 #define RAMULATOR_BASE_UTILS_H
 
+#include <cstdint>   // unitree: needed by g++ 13 (uint64_t below)
 #include <string>
 #include <vector>
 

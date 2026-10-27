@@ -1,0 +1,3 @@
+Monolith run 0: 84 cycles
+SUMMARY: HAS_MONO 1 HAS_CC 0 HAS_B3 0 NB 2: 1 runs, 0 mismatching words
+tb_pe.sv:70: $finish called at 880000 (1ps)
