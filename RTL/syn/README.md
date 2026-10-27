@@ -79,6 +79,29 @@ The fold / canon / negm31 corrections are not applied there: csynth lists an inc
 adder, so they cannot be separated in the reports; they are 5% of the inventory's model gates and would move the
 sharing by less than that.
 
+## The larger multiplier and the sharing claims, with and without Poseidon2
+
+The unit's multipliers are shared between Monolith (its 30 Bricks squares) and Poseidon2 (108 products): the unified
+unit has 108, the separate units 30 + 108 = 138. Without Poseidon2 (bz3, bt_12) the unit has Monolith's 30 and nothing
+shares them. Re-pricing the multiplier (gate model 5,766 NAND2; one-stage synthesis 8,073 = x1.40; two-stage Dadda with
+its 233 stage flip-flops 9,219 = x1.60; xor x0.87 in both corrected columns) in the csynth gate-model parts of every
+unit (`dse/TOP/verify/verify_area.py`):
+
+| configuration | multipliers unified / separate | ALU sharing: model | 1-stage mult | 2-stage mult | total sharing: model | 1-stage | 2-stage | multiplier share of the unified ALU (2-stage) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 4 primitives (with Poseidon2) | 108 / 138 | +39.2% | +36.9% | +35.9% | +32.5% | +32.0% | +31.7% | 65% |
+| BLAKE3 + Monolith + Poseidon2 | 108 / 138 | +30.4% | +29.2% | +28.7% | +10.2% | +11.0% | +11.4% | 66% |
+| Monolith + Poseidon2 (ZK pair) | 108 / 138 | +21.1% | +21.3% | +21.3% | +17.6% | +18.2% | +18.4% | 70% |
+| ChaCha20 + BLAKE3 + Monolith (no Poseidon2) | 30 / 30 | +44.9% | +42.6% | +41.3% | +33.6% | +33.2% | +33.0% | 41% |
+| BLAKE3 + Monolith (no Poseidon2) | 30 / 30 | +28.2% | +26.4% | +25.3% | +2.2% | +2.1% | +2.1% | 43% |
+
+With Poseidon2 the multiplier itself is shared (138 -> 108), so a larger multiplier barely moves the figures: the ZK
+pair even gains (+21.1 -> +21.3% ALU, +17.6 -> +18.4% total), the 4-primitive unit loses 3.3 points of ALU sharing and
+0.8 of total. Without Poseidon2 the multipliers are unshared Monolith-only logic on both sides, so every gate they grow
+dilutes the (adder / xor) sharing: the 3-primitive unit drops from +44.9% to +41.3% ALU, the total only 0.6 points,
+because the registers and selects dominate the total. The multiplier is 65-70% of the unified ALU logic with Poseidon2
+and 41-43% without it.
+
 ## OpenROAD, timing-driven, nangate45, 1 ns clock: every ALU (`orfs/orfs_all.py`, table in `orfs_results.md`)
 
 Each ALU between input and output registers (generated wrappers under `orfs/gen/`), ORFS synth + floorplan +
