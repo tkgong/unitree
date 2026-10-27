@@ -81,6 +81,27 @@ module chk_mul31_en ();
     end
 endmodule
 
+module chk_mul31_p2 ();      // the 2-stage multipliers: inputs at the negedge, result compared two clocks later
+    logic clk = 0; always #5 clk = ~clk;
+    logic [30:0] a, b, ae, be; logic [61:0] y; logic en; logic [61:0] ye;
+    logic [191:0] m [0:`NV-1]; logic [255:0] me [0:`NV-1]; int i, e = 0, ee = 0;
+    alu_mul31_p2 dut (.clk(clk), .a(a), .b(b), .y(y));
+    alu_mul31_en_p2 dute (.clk(clk), .en(en), .a(ae), .b(be), .y(ye));
+    initial begin
+        $readmemh("vec/mul31.hex", m); $readmemh("vec/mul31_en.hex", me);
+        for (i = 0; i < `NV + 2; i++) begin
+            @(negedge clk);
+            if (i >= 2) begin
+                if (y !== m[i-2][61:0]) begin e++; if (e < 4) $display("FAIL mul31_p2 vec %0d y=%h exp=%h", i-2, y, m[i-2][61:0]); end
+                if (ye !== me[i-2][61:0]) begin ee++; if (ee < 4) $display("FAIL mul31_en_p2 vec %0d y=%h exp=%h", i-2, ye, me[i-2][61:0]); end
+            end
+            if (i < `NV) begin a = m[i][158:128]; b = m[i][94:64]; en = me[i][192]; ae = me[i][158:128]; be = me[i][94:64]; end
+        end
+        tb_alu.report("alu_mul31_p2 (latency 2)", e);
+        tb_alu.report("alu_mul31_en_p2 (latency 2)", ee);
+    end
+endmodule
+
 module chk_fold #(parameter int H = 31) ();     // H = 31: alu_fold31 and alu_fold<31> both
     logic [31:0] r; logic [30:0] t, t31; logic [127:0] m [0:`NV-1]; int i, e = 0;
     alu_fold #(.H(H)) dut (.r(r), .t(t));
@@ -192,12 +213,12 @@ module tb_alu ();
         for (W = 31; W <= 35; W++) begin : g_neg chk_negm31 #(.W(W)) u (); end
         for (R = 0; R <= 30; R++) begin : g_rot chk_rot31 #(.R(R)) u (); end
     endgenerate
-    chk_mul31 u_mul (); chk_mul31_en u_mulen ();
+    chk_mul31 u_mul (); chk_mul31_en u_mulen (); chk_mul31_p2 u_mulp2 ();
     chk_canon #(.W(32)) u_canon32 (); chk_canon #(.W(31)) u_canon31 ();
     chk_bar_chunk #(.W(8)) u_bc8 (); chk_bar_chunk #(.W(7)) u_bc7 (); chk_bar31 u_bar ();
     chk_xor u_xor ();
     initial begin
-        #(`NV + 100);
+        #(10 * `NV + 100);
         $display("SUMMARY: %0d module instances, %0d vectors, %0d instances with mismatches", blocks, vectors, fails);
         $finish;
     end

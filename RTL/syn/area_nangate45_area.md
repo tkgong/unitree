@@ -1,28 +1,30 @@
 | module | cells | area um^2 | NAND2 eq | gate model | synth / model | model counts |
 |---|---:|---:|---:|---:|---:|---|
 | alu_add_W32 | 161 | 185.1 | 232 | 240 | 0.97 | add 32 b |
-| alu_lend_W32 | 230 | 312.3 | 391 | 387 | 1.01 | add 32 b + 2 selects 32 b |
+| alu_lend_W32 | 236 | 312.3 | 391 | 387 | 1.01 | add 32 b + 2 selects 32 b |
 | alu_add_W33 | 168 | 199.0 | 249 | 248 | 1.01 | add 33 b |
-| alu_lend_W33 | 244 | 326.9 | 410 | 399 | 1.03 | add 33 b + 2 selects 33 b |
+| alu_lend_W33 | 250 | 326.6 | 409 | 399 | 1.03 | add 33 b + 2 selects 33 b |
 | alu_add_W34 | 169 | 200.6 | 251 | 255 | 0.99 | add 34 b |
-| alu_lend_W34 | 254 | 335.7 | 421 | 411 | 1.02 | add 34 b + 2 selects 34 b |
+| alu_lend_W34 | 256 | 335.4 | 420 | 411 | 1.02 | add 34 b + 2 selects 34 b |
 | alu_add_W35 | 170 | 205.6 | 258 | 262 | 0.98 | add 35 b |
-| alu_lend_W35 | 260 | 346.6 | 434 | 424 | 1.03 | add 35 b + 2 selects 35 b |
-| alu_add_W36 | 173 | 214.1 | 268 | 270 | 0.99 | add 36 b |
-| alu_lend_W36 | 257 | 353.5 | 443 | 436 | 1.02 | add 36 b + 2 selects 36 b |
-| alu_add_W37 | 181 | 217.9 | 273 | 278 | 0.98 | add 37 b |
-| alu_lend_W37 | 270 | 367.1 | 460 | 448 | 1.03 | add 37 b + 2 selects 37 b |
-| alu_add_W38 | 185 | 225.3 | 282 | 285 | 0.99 | add 38 b |
-| alu_lend_W38 | 290 | 382.0 | 479 | 460 | 1.04 | add 38 b + 2 selects 38 b |
-| alu_add_W39 | 190 | 232.2 | 291 | 292 | 0.99 | add 39 b |
-| alu_lend_W39 | 290 | 389.7 | 488 | 472 | 1.03 | add 39 b + 2 selects 39 b |
-| alu_add_W40 | 189 | 233.3 | 292 | 300 | 0.97 | add 40 b |
-| alu_lend_W40 | 301 | 395.5 | 496 | 484 | 1.02 | add 40 b + 2 selects 40 b |
-| alu_add_W41 | 196 | 240.5 | 301 | 308 | 0.98 | add 41 b |
-| alu_lend_W41 | 317 | 410.2 | 514 | 496 | 1.04 | add 41 b + 2 selects 41 b |
+| alu_lend_W35 | 268 | 350.9 | 440 | 424 | 1.04 | add 35 b + 2 selects 35 b |
+| alu_add_W36 | 182 | 216.5 | 271 | 270 | 1.00 | add 36 b |
+| alu_lend_W36 | 272 | 354.0 | 444 | 436 | 1.02 | add 36 b + 2 selects 36 b |
+| alu_add_W37 | 183 | 219.2 | 275 | 278 | 0.99 | add 37 b |
+| alu_lend_W37 | 269 | 363.6 | 456 | 448 | 1.02 | add 37 b + 2 selects 37 b |
+| alu_add_W38 | 198 | 234.9 | 294 | 285 | 1.03 | add 38 b |
+| alu_lend_W38 | 294 | 379.1 | 475 | 460 | 1.03 | add 38 b + 2 selects 38 b |
+| alu_add_W39 | 192 | 230.1 | 288 | 292 | 0.99 | add 39 b |
+| alu_lend_W39 | 290 | 384.4 | 482 | 472 | 1.02 | add 39 b + 2 selects 39 b |
+| alu_add_W40 | 199 | 237.3 | 297 | 300 | 0.99 | add 40 b |
+| alu_lend_W40 | 303 | 394.7 | 495 | 484 | 1.02 | add 40 b + 2 selects 40 b |
+| alu_add_W41 | 204 | 243.7 | 305 | 308 | 0.99 | add 41 b |
+| alu_lend_W41 | 313 | 409.4 | 513 | 496 | 1.03 | add 41 b + 2 selects 41 b |
 | alu_addp_W32 | 161 | 185.1 | 232 | 240 | 0.97 | add 32 b |
-| alu_mul31 | 5848 | 6,442.5 | 8,073 | 5,766 | 1.40 | 31 x 31 partial products |
+| alu_mul31 | 5832 | 6,429.2 | 8,057 | 5,766 | 1.40 | 31 x 31 partial products |
 | alu_mul31_en | None | 6,489.6 | 8,132 | 5,909 | 1.38 | 31 x 31 + select 62 b |
+| alu_mul31_p2 | None | 7,357.0 | 9,219 | 7,164 | 1.29 | 31 x 31 + 233 stage flip-flops x 6 |
+| alu_mul31_en_p2 | None | 7,415.8 | 9,293 | 7,313 | 1.27 | 31 x 31 + select 62 b + 234 flip-flops x 6 |
 | alu_fold_H1 | 1 | 1.6 | 2 | 8 | 0.27 | add 1 b (increment) |
 | alu_fold_H4 | 7 | 9.6 | 12 | 30 | 0.40 | add 4 b (increment) |
 | alu_fold_H5 | 10 | 12.5 | 16 | 38 | 0.42 | add 5 b (increment) |

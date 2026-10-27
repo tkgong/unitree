@@ -79,21 +79,39 @@ The fold / canon / negm31 corrections are not applied there: csynth lists an inc
 adder, so they cannot be separated in the reports; they are 5% of the inventory's model gates and would move the
 sharing by less than that.
 
-## OpenROAD, timing-driven, nangate45, 1 ns clock (`orfs/`, run with `orfs/run_orfs.sh`)
+## OpenROAD, timing-driven, nangate45, 1 ns clock: every ALU (`orfs/orfs_all.py`, table in `orfs_results.md`)
 
-Each ALU between input and output registers (`orfs/*_reg.sv`), ORFS synth + floorplan + placement with timing repair
-(CTS and routing not run, see above); `openroad` reports on `3_place.odb`:
+Each ALU between input and output registers (generated wrappers under `orfs/gen/`), ORFS synth + floorplan +
+timing-driven placement with repair (CTS and routing not run, see above), `openroad` reports on `3_place.odb`. The
+small modules get an explicit 90 x 90 um die (the power grid needs it); everything else 50% utilization.
 
-| design | std-cell area um^2 | of which flip-flops | of which repair buffers | ALU logic um^2 | worst slack at 1 ns |
-|---|---:|---:|---:|---:|---:|
-| alu_lend W=32 | 1,418 | 728 (161 DFF) | 131 | 540 | +0.306 ns (met) |
-| alu_mul31 | 7,125 | 561 (124 DFF) | 613 | 5,908 | -0.493 ns (violated) |
+| design (between registers) | std-cell area um^2 | flip-flops | ALU logic um^2 | worst slack at 1 ns |
+|---|---:|---:|---:|---:|
+| alu_lend W=32 .. 41 (10 runs) | 1,373 .. 1,719 | 161 .. 206 | 468 .. 630 | +0.257 .. +0.306, all met |
+| alu_add W=41 | 1,162 | 123 | 491 | +0.389 |
+| alu_mul31, one stage (reference) | 7,125 | 124 | 5,908 | **-0.493, violated** |
+| alu_mul31_p2, Dadda tree in two stages | 7,547 | 419 | 5,390 | **+0.132, met** |
+| alu_mul31_en_p2 | 7,648 | 421 | 5,491 | **+0.147, met** |
+| alu_fold H=10 / alu_fold31 | 393 / 492 | 63 | 32 / 131 | +0.683 / +0.529 |
+| alu_canon W=32 | 420 | 62 | 64 | +0.670 |
+| alu_negm31 W=33 | 357 | 62 | 1 (absorbed into the flip-flops' inverted outputs) | +0.800 |
+| alu_bar31 | 437 | 62 | 81 | +0.800 |
+| alu_xor | 1,140 | 192 | 102 | +0.800 |
 
-Timing-driven synthesis makes the 32-bit lend adder 1.7x the area-only mapping (X2 / X4 drive cells, MUX2 and HA
-cells), still well inside 1 ns. The 31 x 31 multiplier does not close 1 GHz as a single stage in this 45 nm library
-(1.45 ns through the FA array); the unit's multiplier ranks would need two pipeline stages at 1 GHz, or a faster
-library (the 1 GHz in `dse/TOP/README.md` is an assumption, not a result of this flow). ORFS's multiplier is Booth
-mapped and smaller than the area-only Yosys array (5,908 vs 6,442 um^2).
+**Every ALU meets 1 ns**, with the multiplier in two pipeline stages. The one-stage 31 x 31 array needs 1.45 ns in this
+library; a first attempt that registered two 31 x 16 products (each with its own carry-propagate adder) still failed
+(-0.28 ns, the 47-bit adder of each half sits in stage 1). What closes is the carry-save cut: `gen_mul31_p2.py` emits
+the 961 partial-product bits and a Dadda tree (870 full / half adders, 8 levels: heights 28, 19, 13, 9, 6, 4, 3, 2),
+registers the tree at height 4 (233 flip-flops), and does the last two levels plus the 62-bit carry-propagate add in
+stage 2 (critical path 0.83 ns: 2 FA + HA + the adder). Cost vs the one-stage multiplier: +295 flip-flops (+1,334 um^2
+of sequential cells), 9% less combinational area (the repair buffers drop from 613 to 204 um^2 because no path is
+stretched any more); 108 multipliers in the unit would add 108 x 233 = 25,164 stage flip-flops (about 6% of the unit's
+401,347 FFs). In the HLS unit each multiplier rank would then be two pipeline levels instead of one: the ring periods
+and W grow by 3 (the x^5 chain has three ranks), the issue rate (II = 1) does not; the HLS sources are not changed here.
+
+Timing-driven synthesis makes the adders 1.5-1.8x their area-only mapping (X2 / X4 drive cells, MUX2 and HA cells).
+The 1 GHz of `dse/TOP/README.md` is now backed for every ALU by this flow (placement-level STA, ideal clock, nangate45);
+routing and CTS could not be run on this machine.
 
 ## Reproduce
 
@@ -101,5 +119,5 @@ mapped and smaller than the area-only Yosys array (5,908 vs 6,442 um^2).
 ssh dana336
 cd ~/unitree/RTL/syn && python3 area_nangate45.py --jobs 12 --out area_nangate45_area.md     # ~3 s
 python3 array_totals.py
-sh orfs/run_orfs.sh alu_lend_32    # docker; stops at CTS on this CPU, results under orfs/work/
+python3 orfs/orfs_all.py --jobs 4 --out orfs_results.md   # docker, ~3 min for all 20; stops at placement (CTS crashes on this CPU)
 ```
