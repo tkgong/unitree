@@ -20,3 +20,9 @@ xsim.dir/
 RTL/syn/orfs/work/
 RTL/pe/verify/vec/
 RTL/pe/verify/xsim.dir/
+# memsim (Linux): sh memsim/build_linux.sh
+*.so
+memsim/ramsim/build/
+memsim/ramsim/build.log
+memsim/ramsim/ext/
+memsim/ext/

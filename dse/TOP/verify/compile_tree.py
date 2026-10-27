@@ -35,6 +35,11 @@ nodes after it), each addressed per node and compared on the same runs:
          nodes (960 B) in a 1 KB row, level by level, sibling pairs adjacent (one 64 B burst)
 Row model: 1 KB rows, an open-row set of OROWS rows (LRU); an access to a row that is not open is one activation.
 openonly: skip the commit (no DLL execution), print the open phase only (any tree size).
+HBM (memsim/, Linux): hbm=<channels> replaces the bw= pipe with Ramulator2 HBM2 from UniZK's RamSim, cycle by cycle (1 memory
+clock = 1 unit cycle, 32 B per access, 1 KB rows, FR-FCFS, refresh; peak 32 B/cycle per channel, 8 channels = one stack).
+A read reserves its SRAM slot when it is sent and is on chip when the HBM returns it; a write frees its slot when the
+controller accepts it. hmap=RoBaRaCoCh|ChRaBaRoCo (address mapping), hport=<n> accesses sent per cycle (default = channels),
+hlay=block|level|tile (where stored nodes go). With open=, each layout's open batch is also timed on the HBM2 model.
 """
 import ctypes, heapq, os, random, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -93,10 +98,11 @@ LEAD = 2
 
 
 class Node:
-    __slots__ = ("id", "kind", "prim", "level", "idx", "kids", "parent", "mparent", "result", "done", "root", "res", "cons", "wr", "nw", "freed", "tk", "nwr")
+    __slots__ = ("id", "kind", "prim", "level", "idx", "kids", "parent", "mparent", "result", "done", "root", "res", "cons", "wr", "nw", "freed", "tk", "nwr", "rinf")
     def __init__(s, id, kind, prim, level, idx):
         s.id, s.kind, s.prim, s.level, s.idx, s.kids, s.parent, s.mparent, s.result, s.done, s.root = id, kind, prim, level, idx, [], None, None, None, False, False
         s.res = s.cons = s.wr = s.nw = s.freed = s.tk = False   # memory model: on chip / consumed / written / to be written / slot freed / slot reserved
+        s.rinf = False                                           # hbm=: read sent to the HBM, its slot reserved, data not back yet
         s.nwr = 0                                                # HBM writes of this node (audit)
     @property
     def needs_h(s): return s.kind == "g" and s.prim == 1       # BLAKE3-XOF GGM node: the XOF half needs h
@@ -210,6 +216,17 @@ if MEMSIM:
     assert NT == 1, "the memory model runs one tree"
     SRAM_KB = float(next(a[5:] for a in sys.argv[5:] if a.startswith("sram=")))
     BW = float(next((a[3:] for a in sys.argv[5:] if a.startswith("bw=")), "256"))
+    HCH = int(next((a[4:] for a in sys.argv[5:] if a.startswith("hbm=")), "0"))     # hbm=<channels>: Ramulator2 HBM2 (memsim/) instead of the bw= pipe
+    HBMSIM = HCH > 0
+    if HBMSIM:
+        sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "memsim"))
+        import hbm as hbmlib
+        HMAP = next((a[5:] for a in sys.argv[5:] if a.startswith("hmap=")), "RoBaRaCoCh")
+        HPORT = int(next((a[6:] for a in sys.argv[5:] if a.startswith("hport=")), str(HCH)))   # accesses the SRAM side can send per cycle
+        HLAY = next((a[5:] for a in sys.argv[5:] if a.startswith("hlay=")), "block")   # HBM layout of the stored nodes
+        HB = hbmlib.HBM(HCH, HMAP)
+        BW = float(HB.peak)
+    rsent = {}; rlat = [0, 0, 0]                                                     # hbm=: reads in flight (node id -> send cycle); latency n / sum / max
     STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
     KSK = int(STORE[1:]) if STORE.startswith("k") else (0 if STORE == "all" else 1 << 30)   # levels (above the leaves) not stored
     def stored(l):                                                                    # is level l (0 = leaves) written to HBM
@@ -435,7 +452,42 @@ if MEMSIM:
         brk_n += 1
         used_max = max(used_max, used); dma_cycles += act
         if AUDIT and t % 997 == 0:                                                    # recount the SRAM from the node states
-            n_ = sum(1 for x in nodes if (x.res or x.tk) and not x.freed)
+            n_ = sum(1 for x in nodes if (x.res or x.tk or x.rinf) and not x.freed)
+            assert n_ == used, f"SRAM count {used} != {n_} slots held by node states at cycle {t}"
+    def dma_hbm():                                                                    # hbm=: one cycle against the Ramulator2 HBM2 (memsim/hbm.py)
+        global used, used_max, hbm_rd, hbm_wr, dma_cycles, open_budget, wpend, brk_n   # same queues, arbitration and SRAM rules as dma(); the HBM decides
+        n = 0; act = False                                                            # when a request is taken (controller queues) and when a read returns
+        for q in ((wq, rq) if len(wq) > CAP // 8 else (rq, wq)):
+            while q and n < HPORT:
+                x = q[0]
+                if q is rq:
+                    if used + 1 > CAP or (REQ == "merkle" and (x.idx >> TK) > cur_tile + 1): break   # no room / beyond the double buffer
+                    a = addr("level", lam(x), x.idx)                                  # Merkle leaves (the leaf array) / the GGM root seed
+                    if not HB.send(a, False, x.id): break                             # in order: a full controller queue stalls the stream
+                    if AUDIT: assert not x.res and not x.rinf, "read twice"
+                    q.popleft(); n += 1; act = True
+                    used += 1; x.rinf = True; rsent[x.id] = t; peak()                 # the slot is reserved when the read is sent
+                    if AUDIT: hadd(x, 1); chk()
+                    RROWS.touch(a // ROWB)
+                else:
+                    if not HB.send(addr(HLAY, lam(x), x.idx), True, x.id): break
+                    if AUDIT: assert x.res and x.nw and not x.wr, "write of a value not computed / not to be written / twice"
+                    q.popleft(); n += 1; act = True
+                    hbm_wr += 32; x.wr = True; x.nwr += 1; mem_free(x); wpend -= 1  # the data left the SRAM: it is in the controller's write buffer
+                    for L in LAYOUTS: WROWS[L].touch(addr(L, lam(x), x.idx) // ROWB)
+                    if REQ == "ggm" and x.level == SZ: open_budget -= 1
+        for tag in HB.tick():                                                         # reads that completed this memory clock
+            x = nodes[tag]; x.rinf = False; x.res = True; hbm_rd += 32
+            d = t + 1 - rsent.pop(tag); rlat[0] += 1; rlat[1] += d; rlat[2] = max(rlat[2], d)
+            if REQ == "merkle":
+                if all(k.res for k in x.mparent.kids): rpush(x.mparent)
+            else: rpush(x)
+        brk = (fly, wpend, used - fly - wpend)
+        for i in range(3): brk_sum[i] += brk[i]
+        brk_n += 1
+        used_max = max(used_max, used); dma_cycles += act or bool(rsent)
+        if AUDIT and t % 997 == 0:
+            n_ = sum(1 for x in nodes if (x.res or x.tk or x.rinf) and not x.freed)
             assert n_ == used, f"SRAM count {used} != {n_} slots held by node states at cycle {t}"
 
 # ---------------- compile + execute ----------------
@@ -459,7 +511,7 @@ t = 0
 usehchain = bool(COLOC) and MSLOTS == 0                    # co-located h ride the state lanes (ARX programs; a Monolith program has no ARX nodes)
 pprog = [[] for _ in BASES]                                 # Poseidon2 programs in flight per datapath: {node, pg, due}
 pack = [{"members": [], "stage": 0, "due": None} for _ in BASES]   # the open pack group per datapath
-busy = lambda: any(pprog) or any(s is not None for ring in mslots for s in ring) or any(s is not None for R in rings for s in R["slots"]) or any(p for p in plan) or (MEMSIM and bool(rq or wq))
+busy = lambda: any(pprog) or any(s is not None for ring in mslots for s in ring) or any(s is not None for R in rings for s in R["slots"]) or any(p for p in plan) or (MEMSIM and bool(rq or wq or rsent))
 
 
 def pick(n, allow_h):
@@ -524,7 +576,7 @@ while (any(ready.values()) or busy()) and not OPENONLY:
     rec = {"t": t, "mono": 0, "issue": []}
     if MEMSIM:
         for x in pend_free.pop(t, []): mem_free(x)
-        dma()
+        dma_hbm() if HBMSIM else dma()
     lanes = [0] * NIO
     rg = [0] * NG; mono_now = [0] * len(BASES); r = [0] * len(BASES)
     # ---- Monolith rings (one per datapath): slot due this cycle ----
@@ -705,6 +757,12 @@ def print_open():
         rd, hs = open_phase(qs)
         acts = [len({addr(L, l, j) // ROWB for (l, j) in rd}) for L in LAYOUTS]      # distinct rows: the batch is issued in address order
         print(f"    {q:>5} {len(rd):>10,} {len(rd) / q:>8.1f} {len(rd) * 32 / 1024:>8.1f} {len(rd) * 32 / BW:>8,.0f} {hs:>7,} {hs / THR:>7,.0f} | {'':15} " + " ".join(f"{a:>7,}" for a in acts) + " | " + " " * 15 + " ".join(f"{a / q:>6.1f}" for a in acts))
+        if HBMSIM:                                                                    # the same batch through the HBM2 model, in address order
+            res = []
+            for L in LAYOUTS:
+                cyc, st, lat = hbmlib.batch(sorted(addr(L, l, j) for (l, j) in rd), HCH, HMAP, port=HPORT)
+                res.append(f"{L} {cyc:,} cycles ({len(rd) * 32 / cyc:.1f} B/cycle, ACT {st['ACT']:,}, row hit {100 * st['row_hit']:.0f}%, latency avg {sum(lat) / max(1, len(lat)):.0f})")
+            print(f"          HBM2 {HCH} ch: " + "; ".join(res))
 if OPENONLY:
     print(f"request: {REQ} {MNAME[prim]} 2^{SZ}, open only (no commit run)")
     if SZ <= 14:                                                                      # every node at its own 32-byte address in every layout
@@ -750,7 +808,7 @@ if MEMSIM and AUDIT:                                                            
     assert all(nd.nwr == (1 if must_write(nd) else 0) and nd.nw == must_write(nd) for nd in nodes if nd.kind != "leaf"), "a node written not exactly once iff stored"
     assert hbm_wr == 32 * nw_, (hbm_wr, nw_)
     assert hbm_rd == 32 * ((1 << SZ) if REQ == "merkle" else 1), hbm_rd
-    assert not rq and not wq and fly == 0 and wpend == 0, (len(rq), len(wq), fly, wpend)
+    assert not rq and not wq and not rsent and fly == 0 and wpend == 0, (len(rq), len(wq), len(rsent), fly, wpend)
     nres = sum(1 for nd in nodes if resident(nd) and nd.res and not nd.freed)
     assert used == nres and all(nd.freed or resident(nd) for nd in nodes if nd.res or nd.tk), (used, nres)
     assert used_max <= CAP, (used_max, CAP)
@@ -822,5 +880,11 @@ if MEMSIM:
     print(f"    SRAM breakdown KB at the high-water / time average: results in flight (reserved) {kb(brk_max[0])} / {kb(brk_sum[0] / brk_n)}, "
           f"waiting for the HBM write {kb(brk_max[1])} / {kb(brk_sum[1] / brk_n)}, inputs waiting for their consumer {kb(brk_max[2])} / {kb(brk_sum[2] / brk_n)}")
     print(f"    HBM               read {hbm_rd / 1e6:,.2f} MB, write {hbm_wr / 1e6:,.2f} MB = {(hbm_rd + hbm_wr) / cycles:,.1f} B/cycle average; transferring in {dma_cycles:,} of {cycles:,} cycles ({100 * dma_cycles / cycles:.0f}%)")
+    if HBMSIM:
+        st = HB.stats()
+        print(f"    HBM2 model        {HB.describe()}; SRAM side sends <= {HPORT} accesses/cycle; stored nodes in the {HLAY} layout")
+        print(f"    HBM2 commands     ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
+              f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation")
+        print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
 print(f"  check: all GGM leaves / Merkle roots and parents vs Python reference: {'OK' if ok else 'FAIL'}")
