@@ -89,3 +89,19 @@ the peak on sequential reads is the controller (one command per cycle per channe
 - Open batches (2^22, q = 1,024, 12,430 node reads on 8 channels): level 4,773 cycles, tile 4,863, block 5,971. The block
   layout has the fewest activations (8,774 vs 9,266) but the batch is a single address-ordered stream, so the fewer, longer
   rows serialize on fewer channels; per 1,024 openings the open costs ~5,000 cycles against a 1.55 M-cycle commit.
+
+### Per-unit bandwidth share at the 10x design point (2026-10-28)
+
+22 PEs on one GPU-class HBM budget (448 GB/s) give each unit about 100 B/cycle = 4 HBM2 channels of the model. 2^18 trees,
+64 KB SRAM, Ramulator HBM2 (4 channels, 128 B/cycle peak), every run `audit` OK and bit-exact (`results/logs10x/`):
+
+| workload | store | cycles | vs unconstrained | HBM B/cycle | transferring |
+|---|---|---:|---:|---:|---:|
+| BLAKE3 Merkle 2^18 | out | 98,451 | +0.2% | 85.2 (reads) | 98% |
+| BLAKE3 Merkle 2^18 | k2 | 113,316 | +15.3% | 92.5 | 98% |
+| BLAKE3 Merkle 2^18 | all | 174,118 | +77% | 96.4 | 99% |
+| ChaCha20 GGM 2^18 | out | 98,062 | +0.4% | 85.5 (writes) | 67% |
+| ChaCha20 GGM 2^18 | k2 | 103,360 | +5.8% | 101.4 | 84% |
+
+At 100 B/cycle per unit, store=out runs at the compute bound (32 B per node), store=k2 costs 6-15%, store=all is
+bandwidth-bound (64 B per node against the ~96 B/cycle the 4 channels deliver).
