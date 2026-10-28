@@ -55,12 +55,12 @@ in the work dirs) and sharing against natural units of the same throughput (n38c
 give 792 more gates for bz_16f and pwe_10 (a renamed 132-bit register that the gate model's name rule counts differently; the
 utilization tables are identical) and the same percentages:
 
-The gate model's prices were checked against Nangate45 standard-cell synthesis of the ALUs (`RTL/syn/README.md`, 2026-10-27): the
+The gate model's prices were checked against Nangate45 standard-cell synthesis of the ALUs (`RTL/syn/README.md`, 2026-10-27; removed 2026-10-28, in git history): the
 adders are within 3%, the 31 x 31 multiplier is 1.39x the model, increments / canon / negm31 are over-priced; with the measured
 multiplier and xor factors the ALU sharing is +37.0% (not +39.2%) and the total +32.0% (not +32.5%). The multiplier does
 not close 1 ns as one stage in that library (1.45 ns); as a two-stage Dadda tree it does (+0.067 ns after routing), and every other ALU meets
-1 ns after routing with margin (`RTL/syn/orfs_results_route.md`), so 1 GHz holds for the ALUs with the multiplier ranks at two
-pipeline levels. The bz3 unit itself is generated in SystemVerilog from these ALUs in `RTL/pe` (two PEs, verified against this C++).
+1 ns after routing with margin (`RTL/syn/orfs_results_route.md`, in git history), so 1 GHz holds for the ALUs with the multiplier ranks at two
+pipeline levels. The bz3s configuration is hand-written in SystemVerilog in `RTL/unit18` (verified against this C++ through compiled-program traces).
 
 | unit | gates | logic | ALU | registers | total |
 |---|---:|---:|---:|---:|---:|

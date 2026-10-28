@@ -1,6 +1,5 @@
 # build products, rebuilt by the scripts next to them:
 #   dse/TOP/verify/*.dll    sh dse/TOP/build_bz.sh (clang++ on the Vitis ap_int headers, see dse/verify/build_dll.sh)
-#   RTL/verify/*            sh RTL/verify/run_tb.sh (ref_alu.dll, vec/, tb_alu.vvp)
 #   merkle_baseline         build_cpu.sh / build_gpu*.sh / cargo build --release (p3mono)
 *.dll
 *.exp
@@ -11,31 +10,17 @@
 *.vvp
 *.pyc
 __pycache__/
-RTL/verify/vec/
 merkle_baseline/p3mono/target/
 merkle_baseline/cpu/obj/
 xsim.dir/
 *.jou
 *.wdb
-RTL/syn/orfs/work/
-RTL/pe/verify/vec/
-RTL/pe/verify/xsim.dir/
 # memsim (Linux): sh memsim/build_linux.sh
 *.so
 memsim/ramsim/build/
 memsim/ramsim/build.log
 memsim/ramsim/ext/
 memsim/ext/
-RTL/fsm/verify/vec/
-RTL/fsm/verify/sim_*.log
-RTL/fsm/syn/work/
-RTL/fsm/verify/vec_tree/
-RTL/fsm/verify/obj_*/
-RTL/fsm/verify/verilator_*.log
-RTL/fsm/verify/*.vvp
-RTL/fsm/verify/prog_*/
-RTL/fsm/verify/obj_accel/
-RTL/fsm/verify/accel_run.out
 # RTL/unit18 synthesis / simulation outputs (dana336)
 RTL/unit18/syn/work*/
 RTL/unit18/syn/work*.out

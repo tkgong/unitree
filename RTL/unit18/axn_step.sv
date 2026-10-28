@@ -3,9 +3,9 @@
 // axn_ops #(STEP, CP): the operands EA / EB of the block's four 32-bit adds (they run on lent Monolith adders, alu_lend in the
 //                      datapath levels; EA[q] = word q of the 4 x 32 bus).
 // axn_fin #(STEP, CP): the step's result lanes from the sums EY: the xors (alu_xor instances), constant rotations and the row
-//                      permutation P (wiring). Lanes the step does not write are output as 0 (pe.sv keeps its own value there).
+//                      permutation P (wiring). Lanes the step does not write are output as 0 (arx_group keeps X_s there: WMASK).
 // CP: the copy of the block group (ChaCha20 alternates copies 0 / 1, see level_ops_axn.h). Transcribed by hand from the C++;
-// verified as part of unit_bz3 against the HLS C++ (verify/run_unit_tb.sh).
+// verified in the unit18 tops against the HLS C++ DLL (verify/run_tb.sh, closed-loop traces).
 
 module axn_ops #(
     parameter int STEP = 1,

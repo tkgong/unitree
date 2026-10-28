@@ -5,7 +5,7 @@
 # Results: $WK/blk_<name>.txt.        sh syn_blk.sh [name ...]
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
-SRC="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv ../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../../pe/axn_step.sv"
+SRC="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv ../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../axn_step.sv"
 WK=${WORK:-work}
 mkdir -p $WK
 for n in ${*:-dp_lent dp_nat arx_lend arx_priv sh_b0 sh_b1}; do
@@ -19,7 +19,7 @@ for n in ${*:-dp_lent dp_nat arx_lend arx_priv sh_b0 sh_b1}; do
     sh_b1)    TOP=wrap_shared_b; P="-set BLK 1"; X="../unit18_shared.sv wrap_shared_b.sv";;   # shared, blake tied 1
   esac
   cat > $WK/blk_$n.ys <<EOF
-read_verilog -sv -I../../pe $SRC $X
+read_verilog -sv -I.. $SRC $X
 chparam $P $TOP
 hierarchy -top $TOP
 synth -flatten
@@ -28,6 +28,6 @@ abc -liberty $LIB
 opt_clean -purge
 tee -o $WK/blk_$n.txt stat -liberty $LIB
 EOF
-  /usr/bin/time -f "blk_$n: %e s, %M KB" yosys -q -l $WK/blk_$n.log $WK/blk_$n.ys > /dev/null 2>> $WK/time.txt
+  /usr/bin/time -a -o $WK/time.txt -f "blk_$n: %e s, %M KB" yosys -q -l $WK/blk_$n.log $WK/blk_$n.ys > /dev/null 2>&1
   tail -n 1 $WK/time.txt
 done

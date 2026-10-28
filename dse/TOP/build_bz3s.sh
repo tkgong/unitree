@@ -1,7 +1,7 @@
 #!/bin/sh
 # build_bz3s.sh - the 18-block unit (bz3s): ChaCha20 + BLAKE3 + Monolith, two datapaths, 9 blocks per copy (two rings:
 # 5 blocks on levels 7..12, 4 on levels 5..10), 216 lent adders per datapath. The block count follows the HBM bandwidth
-# share of the 22-PE design point (RTL/fsm/README.md), not the lendable adders.      sh build_bz3s.sh [PYTHON]
+# share of the 22-PE design point, not the lendable adders; hand-written RTL: RTL/unit18.      sh build_bz3s.sh [PYTHON]
 set -e
 PY=${1:-/c/Users/gong.ten/AppData/Local/Programs/Python/Python314/python.exe}
 cd "$(dirname "$0")"

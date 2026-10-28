@@ -911,7 +911,7 @@ if MEMSIM:
 if TRF: TRF.write("Z" + chr(10)); TRF.close(); print(f"  trace               {TRACE_F}: {cycles:,} cycles")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
 HW = next((a[3:] for a in sys.argv[5:] if a.startswith("hw=")), "")
-if HW:                                                                                # the hardware program (RTL/fsm): control words + per-ring descriptors
+if HW:                                                                                # the hardware program (for the RTL/fsm accelerator, in git history): control words + per-ring descriptors
     # slot map (32 B values): Merkle leaves 0 .. 2^SZ-1, internal nodes level-major after them (root last);
     # GGM: node (level, idx) at 2^level - 1 + idx (the root seed at 0, the leaves last)
     def slot(nd):

@@ -1,5 +1,0 @@
-ChaCha20 run 0: 84 cycles, 2 blocks
-BLAKE3 run 0: 84 cycles, 2 blocks
-Monolith run 0: 84 cycles
-SUMMARY: HAS_MONO 1 HAS_CC 1 HAS_B3 1 NB 2: 3 runs, 0 mismatching words
-tb_pe.sv:70: $finish called at 2600000 (1ps)
