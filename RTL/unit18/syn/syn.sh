@@ -3,7 +3,8 @@
 #   flat: synth -flatten  -> total, flip-flops, combinational
 #   hier: the alu_* modules kept as hierarchy -> the ALU area (instances x area each) and the operator counts
 # Results: $WORK/<top>_{flat,hier}.txt (default work); NET=1 also writes the flat gate netlist $WORK/<top>_flat.v (power / STA);
-# ABC_D=<ps> maps for delay (abc -D: delay target, buffering and sizing) instead of area.
+# ABC_D=<ps> maps for delay (abc -D: delay target, buffering and sizing) instead of area; ADDER=kogge-stone|sklansky|han-carlson
+# maps the adders' carry chains ($lcu) as that parallel-prefix network (Yosys techmap +/choices) instead of the default.
 #   sh syn.sh [top ...]    (shared mono chacha blake3)
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
@@ -16,7 +17,9 @@ for t in ${*:-shared mono chacha blake3}; do
     cat > $WK/$t.$mode.ys <<EOF
 read_verilog -sv -I.. $SRC ../unit18_$t.sv
 hierarchy -top unit18_$t
-synth -top unit18_$t $FL
+synth -top unit18_$t $FL ${ADDER:+-run :fine}
+${ADDER:+techmap -map +/choices/$ADDER.v}
+${ADDER:+synth -top unit18_$t $FL -run fine:}
 dfflibmap -liberty $LIB
 abc ${ABC_D:+-D $ABC_D} -liberty $LIB
 opt_clean -purge
