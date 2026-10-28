@@ -1,12 +1,13 @@
 #!/bin/sh
 # syn_blk.sh - flat Nangate45 area of the sub-blocks alone, to split the flat sharing result (syn.sh) by block:
-#   dp_lent  mono_dp18 NL=216 (level-6 adders lendable: alu_lend)      dp_nat   mono_dp18 NL=0 (alu_addp only)
+#   dp_lent  mono_dp18 NL=216 (the 216 narrowest adders lendable: alu_lend)      dp_nat   mono_dp18 NL=0 (alu_addp only)
 #   arx_lend arx_group NBK=9 BL=22 CP=0 PRIV=0 (adds go out on ea/eb)    arx_priv arx_group NBK=9 BL=22 CP=0 PRIV=1
-# Results: work/blk_<name>.txt.        sh syn_blk.sh [name ...]
+# Results: $WK/blk_<name>.txt.        sh syn_blk.sh [name ...]
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
-SRC="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv ../csd_pkg.sv ../add_tree.sv ../mono_dp18.sv ../arx_group.sv ../../pe/axn_step.sv"
-mkdir -p work
+SRC="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv ../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../../pe/axn_step.sv"
+WK=${WORK:-work}
+mkdir -p $WK
 for n in ${*:-dp_lent dp_nat arx_lend arx_priv sh_b0 sh_b1}; do
   X=""
   case $n in
@@ -17,16 +18,16 @@ for n in ${*:-dp_lent dp_nat arx_lend arx_priv sh_b0 sh_b1}; do
     sh_b0)    TOP=wrap_shared_b; P="-set BLK 0"; X="../unit18_shared.sv wrap_shared_b.sv";;   # shared, blake tied 0
     sh_b1)    TOP=wrap_shared_b; P="-set BLK 1"; X="../unit18_shared.sv wrap_shared_b.sv";;   # shared, blake tied 1
   esac
-  cat > work/blk_$n.ys <<EOF
+  cat > $WK/blk_$n.ys <<EOF
 read_verilog -sv -I../../pe $SRC $X
 chparam $P $TOP
 hierarchy -top $TOP
-synth -top $TOP -flatten
+synth -flatten
 dfflibmap -liberty $LIB
 abc -liberty $LIB
 opt_clean -purge
-tee -o work/blk_$n.txt stat -liberty $LIB
+tee -o $WK/blk_$n.txt stat -liberty $LIB
 EOF
-  /usr/bin/time -f "blk_$n: %e s, %M KB" yosys -q -l work/blk_$n.log work/blk_$n.ys > /dev/null 2>> work/time.txt
-  tail -n 1 work/time.txt
+  /usr/bin/time -f "blk_$n: %e s, %M KB" yosys -q -l $WK/blk_$n.log $WK/blk_$n.ys > /dev/null 2>> $WK/time.txt
+  tail -n 1 $WK/time.txt
 done

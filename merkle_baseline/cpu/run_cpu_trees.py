@@ -17,8 +17,8 @@ sys.argv = [a for a in sys.argv if not a.startswith("--")]
 MAXL = int(sys.argv[1]) if len(sys.argv) > 1 else 22
 THREADS = os.cpu_count() or 20
 
-cpu = ctypes.CDLL(os.path.join(HERE, "cpu_trees.dll"))
-p3 = ctypes.CDLL(os.path.join(HERE, "..", "p3mono", "p3mono.dll"))
+cpu = ctypes.CDLL(os.path.join(HERE, "cpu_trees.dll" if os.name == "nt" else "cpu_trees.so"))
+p3 = ctypes.CDLL(os.path.join(HERE, "..", "p3mono", "p3mono.dll" if os.name == "nt" else "target/release/libp3mono.so"))
 U32P = ctypes.POINTER(ctypes.c_uint32)
 cpu.cpu_tree.restype = ctypes.c_double; cpu.cpu_tree.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, U32P, U32P]
 cpu.cpu_init.argtypes = [ctypes.c_int]
@@ -53,10 +53,14 @@ lines = []
 def out(s=""):
     print(s, flush=True); lines.append(s)
 
-out("# CPU tree baselines (i7-12700K, 12 cores / 20 threads)\n")
+LINUX = os.name != "nt"                                     # Linux (dana336): build_cpu_linux.sh, results *_linux
+SUF = "_linux" if LINUX else ""
+CPU_NAME = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")), "?") if LINUX else "i7-12700K, 12 cores / 20 threads"
+out(f"# CPU tree baselines ({CPU_NAME}, {THREADS} threads)\n")
 out("Same node framings as dse/TOP/verify/compile_tree.py and the GPU trees (gpu_trees.cu); leaves / seeds are 31-bit words.")
-out(f"Official BLAKE3 C library 1.8.2: blake3_hash_many processes {cpu.cpu_b3_simd_degree()} inputs per call on this CPU (AVX2; AVX-512 is off on Alder Lake).")
-out("Built with clang 19 -O3 -march=native (C/C++) and rustc 1.95 -C target-cpu=native (Plonky3); timing excludes buffer allocation and input generation.\n")
+out(f"Official BLAKE3 C library 1.8.2: blake3_hash_many processes {cpu.cpu_b3_simd_degree()} inputs per call on this CPU.")
+out(("Built with gcc / g++-13 -O3 -march=native and cargo 1.93 -C target-cpu=native (Plonky3)" if LINUX else
+     "Built with clang 19 -O3 -march=native (C/C++) and rustc 1.95 -C target-cpu=native (Plonky3)") + "; timing excludes buffer allocation and input generation.\n")
 
 # ---------------- checks ----------------
 out("## Correctness")
@@ -127,8 +131,8 @@ out("| tree | size | best implementation | ns/node | Mnodes/s | tree time us |")
 out("|---|---:|---|---:|---:|---:|")
 for (kind, L), (ns, nm, ns1) in sorted(best.items()):
     out(f"| {NAME[kind]} | 2^{L} | {nm} | {ns:.3f} | {1e3 / ns:,.0f} | {ns * ((1 << L) - 1) / 1e3:,.1f} |")
-open(os.path.join(HERE, "..", "RESULTS_CPU_TREES.md" if ONLY == [1, 2, 3, 4, 5] else f"RESULTS_CPU_TREES_k{''.join(map(str, ONLY))}.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+open(os.path.join(HERE, "..", f"RESULTS_CPU_TREES{SUF}.md" if ONLY == [1, 2, 3, 4, 5] else f"RESULTS_CPU_TREES{SUF}_k{''.join(map(str, ONLY))}.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
 import json
-jp = os.path.join(HERE, "cpu_trees.json"); old = json.load(open(jp)) if os.path.exists(jp) else {"threads": THREADS, "rows": []}
+jp = os.path.join(HERE, f"cpu_trees{SUF}.json"); old = json.load(open(jp)) if os.path.exists(jp) else {"threads": THREADS, "rows": []}
 old["rows"] = [r for r in old["rows"] if r["kind"] not in ONLY] + JS; json.dump(old, open(jp, "w"))
 print("ALL OK" if allok else "CHECK FAILED")

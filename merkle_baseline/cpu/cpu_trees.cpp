@@ -21,7 +21,11 @@
 extern "C" {
 #include "blake3_c/blake3_impl.h"
 }
+#ifdef _WIN32
 #define API extern "C" __declspec(dllexport)
+#else
+#define API extern "C" __attribute__((visibility("default")))
+#endif
 
 // ---------------- persistent thread pool (spin barrier; the caller is worker 0) ----------------
 struct Pool {

@@ -5,7 +5,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#ifdef _WIN32
 #define API extern "C" __declspec(dllexport)
+#else
+#define API extern "C" __attribute__((visibility("default")))
+#endif
 
 __constant__ uint64_t KRC[24] = {
   0x0000000000000001ULL, 0x0000000000008082ULL, 0x800000000000808AULL, 0x8000000080008000ULL,

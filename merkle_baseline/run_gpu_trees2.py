@@ -11,7 +11,7 @@ CC_CONST = [0x61707865, 0x3320646E, 0x79622D32, 0x6B206574]
 ONLY = [int(k) for k in next((a[7:] for a in sys.argv[1:] if a.startswith("--only=")), "1,2,3,4,5").split(",")]
 sys.argv = [a for a in sys.argv if not a.startswith("--")]
 MAXL = int(sys.argv[1]) if len(sys.argv) > 1 else 22
-g = ctypes.CDLL(os.path.join(HERE, "gpu_trees2.dll"))
+g = ctypes.CDLL(os.path.join(HERE, "gpu_trees2.dll" if os.name == "nt" else "gpu_trees2.so"))
 U32P = ctypes.POINTER(ctypes.c_uint32)
 g.gpu_init.argtypes = [ctypes.c_char_p, ctypes.c_char_p]; g.gpu_name.restype = ctypes.c_char_p
 g.tree2_run.argtypes = [ctypes.c_int] * 5 + [U32P, U32P]
@@ -42,7 +42,8 @@ def ggm_ref(kind, seed, depth):
 lines = []
 def out(s=""):
     print(s); lines.append(s)
-out("# GPU tree baselines, tuned (RTX 3070, CUDA 12.6, sm_86)\n")
+SUF = "" if os.name == "nt" else "_linux"                # Linux (dana336): build_gpu_trees2_linux.sh (nvcc 11.8), results *_linux
+out("# GPU tree baselines, tuned (RTX 3070, " + ("CUDA 12.6" if os.name == "nt" else "nvcc 11.8, driver 570") + ", sm_86)\n")
 out(f"GPU: {g.gpu_name().decode()}. Variants: **per-level** = one launch per tree level, the original gpu_trees.cu kernels "
     "(Monolith with 64-bit constants); **fused+opt** = the top (Merkle) / head (GGM) levels with <= 256 nodes per tree in one launch in shared "
     "memory, Monolith MDS on 32-bit operands; **x8** = 8 independent trees per program. Kernel time with device-resident data "
@@ -85,8 +86,8 @@ for kind in ONLY:
             row.append((ns, pc.value))
         res[(kind, L)] = row
         out(f"| {NAME[kind]} | 2^{L} | {row[0][0]:.3f} | {row[1][0]:.3f} | {row[2][0]:.3f} | {1e3 / row[2][0]:,.0f} | {row[2][1]:.2f} |")
-jp = os.path.join(HERE, "gpu_trees2.json")
+jp = os.path.join(HERE, f"gpu_trees2{SUF}.json")
 old = json.load(open(jp)) if os.path.exists(jp) else {}
 old.update({f"{k[0]}_{k[1]}": v for k, v in res.items()}); json.dump(old, open(jp, "w"))
-open(os.path.join(HERE, "RESULTS_GPU_TREES2.md" if ONLY == [1, 2, 3, 4, 5] else f"RESULTS_GPU_TREES2_k{''.join(map(str, ONLY))}.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+open(os.path.join(HERE, f"RESULTS_GPU_TREES2{SUF}.md" if ONLY == [1, 2, 3, 4, 5] else f"RESULTS_GPU_TREES2{SUF}_k{''.join(map(str, ONLY))}.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
 print("ALL OK" if allok else "CHECK FAILED")
