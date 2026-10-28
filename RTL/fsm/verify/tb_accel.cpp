@@ -92,6 +92,11 @@ int main(int argc, char** argv) {
         if (dut->rd_valid && dut->rd_ready) { rq.push_back({tcyc + (uint64_t)LAT, dut->rd_addr, (uint16_t)dut->rd_tag}); nrd++; }
         if (dut->wr_valid && dut->wr_ready) { V256 v; for (int j = 0; j < 8; j++) v.w[j] = dut->wr_data[j]; hbm[dut->wr_addr] = v; nwr++; }
         if (!rq.empty()) rd_busy++;
+        if (getenv("TRACE")) {
+            uint32_t fin = dut->rootp->accel_top__DOT__u_seq__DOT__fin, iss = dut->rootp->accel_top__DOT__u_seq__DOT__issue;
+            if (fin || iss || dut->wr_valid) printf("t %llu pc %u issue %04x fin %04x wr_valid %d wr_addr %08x st %d
+", (unsigned long long)(tcyc - t0), dut->dbg_pc, iss, fin, dut->wr_valid, dut->wr_addr, (int)dut->rootp->accel_top__DOT__st);
+        }
         tick();
         if (dut->done) done = true;
     }

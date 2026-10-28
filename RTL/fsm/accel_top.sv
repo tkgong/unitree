@@ -9,7 +9,6 @@
 // SRAM map (slots): leaf buffers A, B [0, 2 NLT); internal buffers A, B [2 NLT, 4 NLT); top leaves / subtree seeds
 // [4 NLT, 4 NLT + NT); top internal [4 NLT + NT, 4 NLT + 2 NT); the root / seed slot 4 NLT + 2 NT.
 module accel_top
-    import unit_cfg::*;
 #(
     parameter int CTRLW = 306,
     parameter int DESCW = 104,
@@ -49,7 +48,7 @@ module accel_top
     // program memories (loaded by the testbench through hierarchical references)
     output logic [15:0] dbg_pc
 );
-    localparam int NRP = 2 * NB + 2 * NM, NWP = 2 * NB + NM;
+    localparam int NRP = 2 * unit_cfg::NB + 2 * unit_cfg::NM, NWP = 2 * unit_cfg::NB + unit_cfg::NM;
     // ---------------- geometry ----------------
     logic [15:0] NLT, NT;                               // leaves per tile, tiles
     assign NLT = 16'd1 << cfg_tk;
@@ -65,8 +64,8 @@ module accel_top
     logic        bank;
     logic [15:0] pc;
     logic [CTRLW-1:0] ctrl;
-    logic [NR+NM-1:0][15:0] dptr;
-    logic [(NR+NM)*7*DESCW-1:0] dgrp;
+    logic [unit_cfg::NR+unit_cfg::NM-1:0][15:0] dptr;
+    logic [(unit_cfg::NR+unit_cfg::NM)*7*DESCW-1:0] dgrp;
     logic [NRP*16-1:0] srd_addr;
     logic [NRP*256-1:0] srd_data;
     logic [NWP-1:0] swr_en;
@@ -75,10 +74,10 @@ module accel_top
     logic [NWP-1:0] ev_valid;
     logic [NWP*16-1:0] ev_addr;
     logic [NWP*256-1:0] ev_data;
-    logic [NIO*64-1:0] lin, lout;
+    logic [unit_cfg::NIO*64-1:0] lin, lout;
     logic mono, mono2, htap, blake;
     logic [8:0] r, r2;
-    logic [NG*9-1:0] rg;
+    logic [unit_cfg::NG*9-1:0] rg;
     seq #(.CTRLW(CTRLW), .DESCW(DESCW)) u_seq (.clk(clk), .rst(rst), .run(seq_run), .ncyc(seq_ncyc), .busy(seq_busy), .done(seq_done),
         .reg1(s_r1), .reg2(s_r2), .base0(s_b0), .base1(s_b1), .base2(s_b2), .root_slot(s_root_slot), .root_dst(s_root_dst),
         .lv_off(s_lv_off), .tile_idx(s_tile), .pc(pc), .ctrl(ctrl), .dptr(dptr), .dgrp(dgrp),
@@ -87,7 +86,7 @@ module accel_top
         .lin(lin), .lout(lout), .mono(mono), .mono2(mono2), .htap(htap), .blake(blake), .r(r), .r2(r2), .rg(rg));
     assign dbg_pc = pc;
     unit_bz3 u_unit (.clk(clk), .rst(rst), .lin(lin), .lout(lout), .mono(mono), .mono2(mono2), .htap(htap), .blake(blake), .r(r), .r2(r2), .rg(rg));
-    prog_mem #(.CTRLW(CTRLW), .DESCW(DESCW), .NRING(NR + NM), .NCTRL(NCTRL), .NDESC(NDESC)) u_prog (.bank(bank), .pc(pc), .ctrl(ctrl), .dptr(dptr), .dgrp(dgrp));
+    prog_mem #(.CTRLW(CTRLW), .DESCW(DESCW), .NRING(unit_cfg::NR + unit_cfg::NM), .NCTRL(NCTRL), .NDESC(NDESC)) u_prog (.bank(bank), .pc(pc), .ctrl(ctrl), .dptr(dptr), .dgrp(dgrp));
     // SRAM: the sequencer's ports + one DMA write port
     logic dma_we;
     logic [15:0] dma_waddr;

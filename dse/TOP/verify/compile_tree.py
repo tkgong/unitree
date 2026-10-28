@@ -911,8 +911,11 @@ if HW:                                                                          
                 if kind != "MEM": continue
                 k = int(ri[1:]) + NR_ if isinstance(ri, str) else ri
                 issue |= 1 << k
+            grp = {}                                                                  # ring -> {block position: node}
             for (bi, nd) in rec["mem"]:
-                ri = next(i for i, R in enumerate(rings) if bi in R["blocks"]); desc[ri].append(nd)
+                ri = next(i for i, R in enumerate(rings) if bi in R["blocks"]); grp.setdefault(ri, {})[rings[ri]["blocks"].index(bi)] = nd
+            for ri, g in grp.items():                                                 # one group per issue: nb descriptors, invalid ones padded
+                for b in range(len(rings[ri]["blocks"])): desc[ri].append(g.get(b))
             for (d, nd) in rec["memm"]: desc[NR_ + d].append(nd)
             for (jb, nd) in rec["fin"]:
                 src = next(i for i, R in enumerate(rings) if jb in R["lblocks"])        # the ring whose last-span lanes hold the result
@@ -934,11 +937,12 @@ if HW:                                                                          
     for k in range(NR_ + NM_):
         with open(os.path.join(HW, f"desc_{k}.hex"), "w") as f:
             for nd in desc[k]:
+                if nd is None: f.write(f"{0:026x}" + chr(10)); continue                # padding: valid bit 103 = 0
                 if nd.kind == "m":
                     kids = [slot(x) for x in nd.kids]; out = [slot(nd), 0]; idx = 0; lev = 0; root = 1 if nd.root else 0; gg = 0
                 else:
                     kids = [slot(nd), 0]; out = [slot(x) for x in nd.kids]; idx = nd.idx; lev = nd.level; root = 0; gg = 1
-                w = gg | (kids[0] << 1) | (kids[1] << 17) | ((idx & 0xffffffff) << 33) | (lev << 65) | (root << 70) | (out[0] << 71) | (out[1] << 87)
+                w = gg | (kids[0] << 1) | (kids[1] << 17) | ((idx & 0xffffffff) << 33) | (lev << 65) | (root << 70) | (out[0] << 71) | (out[1] << 87) | (1 << 103)
                 f.write(f"{w:026x}\n")
     leaves = sorted(nd.idx for nd in nodes if nd.kind == "leaf") if REQ == "merkle" else [0]
     with open(os.path.join(HW, "meta.txt"), "w") as f:

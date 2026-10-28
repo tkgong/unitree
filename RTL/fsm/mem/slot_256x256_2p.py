@@ -1,0 +1,15 @@
+word_size = 256
+num_words = 256
+num_banks = 1
+num_rw_ports = 1
+num_r_ports = 1
+num_w_ports = 0
+tech_name = "freepdk45"
+process_corners = ["TT"]
+supply_voltages = [1.0]
+temperatures = [25]
+use_nix = False
+check_lvsdrc = False
+analytical_delay = True
+output_name = "slot_256x256_2p_freepdk45"
+output_path = "out_slot_256x256_2p"
