@@ -84,15 +84,6 @@ module mono_dp18 #(
     // v: every node's value at its own level; vd[d]: the value d further stages later (d <= life)
     wire [NN*VW-1:0] v, vd1, vd2, vd3;
     wire [41*31-1:0] redv;                                   // the 41 reduced mult inputs (at the mult's red level)
-    function automatic logic [VW-1:0] rd(input logic [NN*VW-1:0] v0, input logic [NN*VW-1:0] d1,
-                                        input logic [NN*VW-1:0] d2, input logic [NN*VW-1:0] d3, input int id, input int d);
-        case (d)
-            0: rd = v0[id*VW +: VW];
-            1: rd = d1[id*VW +: VW];
-            2: rd = d2[id*VW +: VW];
-            default: rd = d3[id*VW +: VW];
-        endcase
-    endfunction
     generate
         if (NL == 0) begin : g_noey
             assign ey = '0;
@@ -160,8 +151,16 @@ module mono_dp18 #(
                     assign a = {1'b0, (BK == 0 || BK == 1) ? br[BJ*31 +: 31] : bn[BJ*31 +: 31]};
                     assign b = {1'b0, (BK == 0 || BK == 2) ? br[(BJ + 8)*31 +: 31] : bn[(BJ + 8)*31 +: 31]};
                 end else begin : g_ops
-                    assign ra = rd(v, vd1, vd2, vd3, A, DA);
-                    assign rb = rd(v, vd1, vd2, vd3, B, DB);
+                    // operand read: the node register itself (DA = 0) or its delay stage DA (bus vd1..vd3); a select at
+                    // generate time (a function taking the 30 kbit buses as arguments made Yosys copy them per call)
+                    if (DA == 0) begin : g_ra0      assign ra = v[A*VW +: VW];
+                    end else if (DA == 1) begin : g_ra1 assign ra = vd1[A*VW +: VW];
+                    end else if (DA == 2) begin : g_ra2 assign ra = vd2[A*VW +: VW];
+                    end else begin : g_ra3          assign ra = vd3[A*VW +: VW]; end
+                    if (DB == 0) begin : g_rb0      assign rb = v[B*VW +: VW];
+                    end else if (DB == 1) begin : g_rb1 assign rb = vd1[B*VW +: VW];
+                    end else if (DB == 2) begin : g_rb2 assign rb = vd2[B*VW +: VW];
+                    end else begin : g_rb3          assign rb = vd3[B*VW +: VW]; end
                     if (KA == 5) begin : g_ka                // operand A is the output constant K_i (i = its A field)
                         localparam int KI = int'(TA[35:26]);
                         always_comb begin
