@@ -114,58 +114,54 @@ package mono_pkg;
         endcase
     endfunction
 
-    // CSD digit of constant c at shift s: -1, 0 or +1 (non-adjacent form, computed from the low bits upwards)
-    function automatic int csd_digit(input int c, input int s);
-        int n, i, r;
-        n = c; csd_digit = 0;
-        for (i = 0; i <= s; i++) begin
-            if (n & 1) begin
-                r = 2 - (n & 3);                                   // +1 when n = 1 mod 4, -1 when n = 3 mod 4
-                if (i == s) csd_digit = r;
-                n = n - r;
-            end
-            n = n >> 1;
-        end
-    endfunction
-    // The per-shift tables, evaluated once here (a generate block must not call the digit loops thousands of times):
-    //   DIGV: digit of constant k at shift s (2 bits: 0 none, 1 = +1, 2 = -1)    TIDV: position of constant k among the
-    //   terms at shift s (5 bits)    NTV: terms at shift s (8 bits)    ADV: adders of one output's tree at shift s (nterm - 1)
-    //   OFV: adders of all 16 outputs at the shifts below s (16 bits)
-    function automatic logic [16*NSH*2-1:0] mk_dig();
-        int k, s, d;
-        mk_dig = '0;
-        for (k = 0; k < 16; k++) for (s = 0; s < NSH; s++) begin
-            d = csd_digit(ROW(k), s);
-            mk_dig[(k*NSH + s)*2 +: 2] = (d > 0) ? 2'd1 : (d < 0) ? 2'd2 : 2'd0;
-        end
-    endfunction
-    localparam logic [16*NSH*2-1:0] DIGV = mk_dig();
+    // CSD digits of the MDS row: dig(k, s) = 1 for a term +x << s, 2 for (p - x) << s, 0 none. Each constant as its
+    // signed-binary decomposition (non-adjacent form, 90 digits in all, shifts 0..16):
     function automatic logic [1:0] dig(input int k, input int s);
-        dig = DIGV[(k*NSH + s)*2 +: 2];
+        case (k * NSH + s)
+            // ROW[0] = 61402 = 2^16 - 2^12 - 2^5 - 2^3 + 2^1
+            1: dig = 2'd1; 3: dig = 2'd2; 5: dig = 2'd2; 12: dig = 2'd2; 16: dig = 2'd1;
+            // ROW[1] = 17845 = 2^14 + 2^11 - 2^9 - 2^6 - 2^4 + 2^2 + 2^0
+            17: dig = 2'd1; 19: dig = 2'd1; 21: dig = 2'd2; 23: dig = 2'd2; 26: dig = 2'd2; 28: dig = 2'd1; 31: dig = 2'd1;
+            // ROW[2] = 26798 = 2^15 - 2^13 + 2^11 + 2^8 - 2^6 - 2^4 - 2^1
+            35: dig = 2'd2; 38: dig = 2'd2; 40: dig = 2'd2; 42: dig = 2'd1; 45: dig = 2'd1; 47: dig = 2'd2; 49: dig = 2'd1;
+            // ROW[3] = 59689 = 2^16 - 2^13 + 2^11 + 2^8 + 2^5 + 2^3 + 2^0
+            51: dig = 2'd1; 54: dig = 2'd1; 56: dig = 2'd1; 59: dig = 2'd1; 62: dig = 2'd1; 64: dig = 2'd2; 67: dig = 2'd1;
+            // ROW[4] = 12021 = 2^14 - 2^12 - 2^8 - 2^4 + 2^2 + 2^0
+            68: dig = 2'd1; 70: dig = 2'd1; 72: dig = 2'd2; 76: dig = 2'd2; 80: dig = 2'd2; 82: dig = 2'd1;
+            // ROW[5] = 40901 = 2^15 + 2^13 - 2^6 + 2^2 + 2^0
+            85: dig = 2'd1; 87: dig = 2'd1; 91: dig = 2'd2; 98: dig = 2'd1; 100: dig = 2'd1;
+            // ROW[6] = 41351 = 2^15 + 2^13 + 2^9 - 2^7 + 2^3 - 2^0
+            102: dig = 2'd2; 105: dig = 2'd1; 109: dig = 2'd2; 111: dig = 2'd1; 115: dig = 2'd1; 117: dig = 2'd1;
+            // ROW[7] = 27521 = 2^15 - 2^12 - 2^10 - 2^7 + 2^0
+            119: dig = 2'd1; 126: dig = 2'd2; 129: dig = 2'd2; 131: dig = 2'd2; 134: dig = 2'd1;
+            // ROW[8] = 56951 = 2^16 - 2^13 - 2^9 + 2^7 - 2^3 - 2^0
+            136: dig = 2'd2; 139: dig = 2'd2; 143: dig = 2'd1; 145: dig = 2'd2; 149: dig = 2'd2; 152: dig = 2'd1;
+            // ROW[9] = 12034 = 2^14 - 2^12 - 2^8 + 2^1
+            154: dig = 2'd1; 161: dig = 2'd2; 165: dig = 2'd2; 167: dig = 2'd1;
+            // ROW[10] = 53865 = 2^16 - 2^14 + 2^12 + 2^9 + 2^7 - 2^5 + 2^3 + 2^0
+            170: dig = 2'd1; 173: dig = 2'd1; 175: dig = 2'd2; 177: dig = 2'd1; 179: dig = 2'd1; 182: dig = 2'd1; 184: dig = 2'd2; 186: dig = 2'd1;
+            // ROW[11] = 43244 = 2^15 + 2^13 + 2^11 + 2^8 - 2^4 - 2^2
+            189: dig = 2'd2; 191: dig = 2'd2; 195: dig = 2'd1; 198: dig = 2'd1; 200: dig = 2'd1; 202: dig = 2'd1;
+            // ROW[12] = 7454 = 2^13 - 2^10 + 2^8 + 2^5 - 2^1
+            205: dig = 2'd2; 209: dig = 2'd1; 212: dig = 2'd1; 214: dig = 2'd2; 217: dig = 2'd1;
+            // ROW[13] = 33823 = 2^15 + 2^10 + 2^5 - 2^0
+            221: dig = 2'd2; 226: dig = 2'd1; 231: dig = 2'd1; 236: dig = 2'd1;
+            // ROW[14] = 28750 = 2^15 - 2^12 + 2^6 + 2^4 - 2^1
+            239: dig = 2'd2; 242: dig = 2'd1; 244: dig = 2'd1; 250: dig = 2'd2; 253: dig = 2'd1;
+            // ROW[15] = 1108 = 2^10 + 2^6 + 2^4 + 2^2
+            257: dig = 2'd1; 259: dig = 2'd1; 261: dig = 2'd1; 265: dig = 2'd1;
+            default: dig = 2'd0;
+        endcase
     endfunction
-    function automatic logic [NSH*8-1:0] mk_nt();
-        int k, s;
-        mk_nt = '0;
-        for (s = 0; s < NSH; s++) for (k = 0; k < 16; k++) if (dig(k, s) != 2'd0) mk_nt[s*8 +: 8] = mk_nt[s*8 +: 8] + 8'd1;
+    function automatic int nterm(input int s);                     // terms of every output at shift s
+        int k;
+        nterm = 0;
+        for (k = 0; k < 16; k++) if (dig(k, s) != 2'd0) nterm = nterm + 1;
     endfunction
-    localparam logic [NSH*8-1:0] NTV = mk_nt();
-    function automatic int nterm(input int s);
-        nterm = NTV[s*8 +: 8];
-    endfunction
-    function automatic logic [16*NSH*5-1:0] mk_tid();
-        int k, s, n;
-        mk_tid = '0;
-        for (s = 0; s < NSH; s++) begin
-            n = 0;
-            for (k = 0; k < 16; k++) begin
-                mk_tid[(k*NSH + s)*5 +: 5] = n[4:0];
-                if (dig(k, s) != 2'd0) n = n + 1;
-            end
-        end
-    endfunction
-    localparam logic [16*NSH*5-1:0] TIDV = mk_tid();
-    function automatic int tidx(input int s, input int k);
-        tidx = TIDV[(k*NSH + s)*5 +: 5];
+    function automatic int tidx(input int s, input int k);         // position of constant k among the terms at shift s
+        int j;
+        tidx = 0;
+        for (j = 0; j < k; j++) if (dig(j, s) != 2'd0) tidx = tidx + 1;
     endfunction
     function automatic int clog2i(input int n);                    // ceil(log2 n), 0 for n <= 1
         int v;
@@ -175,14 +171,10 @@ package mono_pkg;
     function automatic int grp_adders(input int s);                // adders of one output's tree at shift s
         grp_adders = (nterm(s) > 1) ? nterm(s) - 1 : 0;
     endfunction
-    function automatic logic [(NSH+1)*16-1:0] mk_off();
-        int s;
-        mk_off = '0;
-        for (s = 0; s < NSH; s++) mk_off[(s+1)*16 +: 16] = mk_off[s*16 +: 16] + 16 * grp_adders(s);
-    endfunction
-    localparam logic [(NSH+1)*16-1:0] OFV = mk_off();
     function automatic int grp_off(input int s);                   // adders of all groups s' < s, for all 16 outputs
-        grp_off = OFV[s*16 +: 16];
+        int j;
+        grp_off = 0;
+        for (j = 0; j < s; j++) grp_off = grp_off + 16 * grp_adders(j);
     endfunction
     localparam int NARROW = grp_off(NSH);                          // narrow-tree adders (all outputs, all shifts)
     localparam int NWIDE  = 16 * (NSH - 1);                        // the combine over the 17 shifted group sums, per output

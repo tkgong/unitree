@@ -29,3 +29,7 @@ memsim/ext/
 RTL/fsm/verify/vec/
 RTL/fsm/verify/sim_*.log
 RTL/fsm/syn/work/
+RTL/fsm/verify/vec_tree/
+RTL/fsm/verify/obj_*/
+RTL/fsm/verify/verilator_*.log
+RTL/fsm/verify/*.vvp
