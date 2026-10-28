@@ -33,3 +33,6 @@ RTL/fsm/verify/vec_tree/
 RTL/fsm/verify/obj_*/
 RTL/fsm/verify/verilator_*.log
 RTL/fsm/verify/*.vvp
+RTL/fsm/verify/prog_*/
+RTL/fsm/verify/obj_accel/
+RTL/fsm/verify/accel_run.out

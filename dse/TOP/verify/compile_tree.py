@@ -127,7 +127,7 @@ def build_merkle_over(leaves, prim, nodes):
             level[i].mparent = p; level[i + 1].mparent = p
             nodes.append(p); nxt.append(p); parents.append(p)
         level = nxt
-    level[0].root = True
+    level[0].root = "noroot" not in sys.argv[5:]                 # noroot: a subtree program (its root is an inner node of the tree)
     return parents, level[0]
 
 
@@ -574,7 +574,7 @@ def finish(nd, o):
 
 OPENONLY = MEMSIM and "openonly" in sys.argv[5:]
 while (any(ready.values()) or busy()) and not OPENONLY:
-    rec = {"t": t, "mono": 0, "issue": []}
+    rec = {"t": t, "mono": 0, "issue": [], "mem": [], "fin": [], "memm": [], "finm": []}   # mem / fin: (block index, node); memm / finm: (datapath, node)
     if MEMSIM:
         for x in pend_free.pop(t, []): mem_free(x)
         dma_hbm() if HBMSIM else dma()
@@ -589,14 +589,14 @@ while (any(ready.values()) or busy()) and not OPENONLY:
                 if P2: lanes[B:B + 24] = mono_issue_lanes(mono_words(prev[B:B + 8]))
                 rec["issue"].append(("PIPE", f"M{d}", s["r"], [s["node"].id]))
             else:
-                finish(s["node"], out_words(prev[B:B + 8], 4)); mem_writes += 1
+                finish(s["node"], out_words(prev[B:B + 8], 4)); mem_writes += 1; rec["finm"].append((d, s["node"]))
                 mslots[d][j] = None; s = None; mused[d] -= 1
         if s is None and mused[d] < MSLOTS and ready[4] and (nd := (pop_fit(ready[4]) if MEMSIM else heapq.heappop(ready[4])[2])) is not None:
             mslots[d][j] = {"node": nd, "r": 0}; mused[d] += 1
             if MEMSIM: mem_take(nd)
             body, _ = node_in(nd); lanes[B:B + len(body)] = body; mono_now[d] = 1; r[d] = 0
             mem_reads += 2; live -= sum(1 for k in nd.kids if k.kind != "leaf")
-            rec["issue"].append(("MEM", f"M{d}", 0, [nd.id]))
+            rec["issue"].append(("MEM", f"M{d}", 0, [nd.id])); rec["memm"].append((d, nd))
     # ---- Poseidon2 programs (one per node): own issues of three latencies, the internal S-boxes packed 16 per issue ----
     for d, B in enumerate(BASES):
         g = pack[d]
@@ -675,14 +675,14 @@ while (any(ready.values()) or busy()) and not OPENONLY:
                 rec["issue"].append(("PIPE", ri, s["r"], [nd.id for nd in s["nodes"]]))
             else:
                 for b, nd in enumerate(s["nodes"]):
-                    jb = S_["lblocks"][b]; finish(nd, out_words(prev[BB[jb]:BB[jb] + 18], nd.prim)); mem_writes += 1
+                    jb = S_["lblocks"][b]; finish(nd, out_words(prev[BB[jb]:BB[jb] + 18], nd.prim)); mem_writes += 1; rec["fin"].append((jb, nd))
                 R["slots"][j] = None; s = None
         if s is None and t in plan[ri]:
             grp = plan[ri].pop(t)
             R["slots"][j] = {"nodes": grp, "r": 0}
             rec["issue"].append(("MEM", ri, 0, [nd.id for nd in grp])); rg[g0] = 0
             for b, nd in enumerate(grp):
-                body, h = node_in(nd); bi = R["blocks"][b]
+                body, h = node_in(nd); bi = R["blocks"][b]; rec["mem"].append((bi, nd))
                 lanes[BB[bi]:BB[bi] + len(body)] = body
                 if h is not None and not (bi < COLOC): lanes[HB[bi]:HB[bi] + 4] = h
                 if nd.kind == "m":
@@ -720,6 +720,7 @@ while (any(ready.values()) or busy()) and not OPENONLY:
                     body, h = node_in(nd)
                     if h is not None: lanes[BASE + 4 * b:BASE + 4 * b + 4] = h
     live_max = max(live_max, live); live_top_max = max(live_top_max, live_top); ready_max = max(globals().get('ready_max', 0), len(ready[1]) + len(ready[2]) + len(ready[4]))
+    rec["ctrl"] = (list(mono_now), list(r), list(rg), htap)
     o = ARR()
     if NENG: stepe(mono_now[0], mono_now[1] if NDP == 2 else 0, htap, BLAKE, r[0], r[1] if NDP == 2 else 0, IG(*rg), IEN(*er), ARR(*lanes), o)
     else: stepx(mono_now[0], mono_now[1] if NDP == 2 else 0, htap, BLAKE, r[0], r[1] if NDP == 2 else 0, IG(*rg), ARR(*lanes), o)
@@ -890,4 +891,63 @@ if MEMSIM:
               f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation; write buffers drained {drain} cycles after the last cycle")
         print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
+HW = next((a[3:] for a in sys.argv[5:] if a.startswith("hw=")), "")
+if HW:                                                                                # the hardware program (RTL/fsm): control words + per-ring descriptors
+    # slot map (32 B values): Merkle leaves 0 .. 2^SZ-1, internal nodes level-major after them (root last);
+    # GGM: node (level, idx) at 2^level - 1 + idx (the root seed at 0, the leaves last)
+    def slot(nd):
+        if REQ == "merkle": return nd.idx if nd.kind == "leaf" else (1 << SZ) + ((1 << SZ) - (1 << (SZ - nd.level + 1))) + nd.idx
+        return (1 << nd.level) - 1 + nd.idx
+    NSLOT = (1 << (SZ + 1)) - 1
+    os.makedirs(HW, exist_ok=True)
+    NR_ = len(rings); NM_ = len(BASES)
+    desc = [[] for _ in range(NR_ + NM_)]                                            # per ring / datapath: descriptors in issue order
+    maxi = maxf = 0
+    with open(os.path.join(HW, "ctrl.hex"), "w") as f:
+        for rec in prog:
+            mono_now, r_, rg_, htap_ = rec["ctrl"]
+            issue = 0; fin = 0
+            for kind, ri, rr, ids in rec["issue"]:
+                if kind != "MEM": continue
+                k = int(ri[1:]) + NR_ if isinstance(ri, str) else ri
+                issue |= 1 << k
+            for (bi, nd) in rec["mem"]:
+                ri = next(i for i, R in enumerate(rings) if bi in R["blocks"]); desc[ri].append(nd)
+            for (d, nd) in rec["memm"]: desc[NR_ + d].append(nd)
+            for (jb, nd) in rec["fin"]:
+                src = next(i for i, R in enumerate(rings) if jb in R["lblocks"])        # the ring whose last-span lanes hold the result
+                ri = src if not ALT else (src + NCH // 2) % NCH                          # ChaCha: the group was issued in the partner copy
+                fin |= 1 << ri
+            for (d, nd) in rec["finm"]: fin |= 1 << (NR_ + d)
+            maxi = max(maxi, len(rec["mem"]) + len(rec["memm"])); maxf = max(maxf, len(rec["fin"]) + len(rec["finm"]))
+            w = 0; sh = 0
+            w |= (mono_now[0] | (mono_now[1] << 1 if NDP == 2 else 0)) << sh; sh += 2
+            w |= (htap_ & 1) << sh; sh += 1
+            w |= (BLAKE & 1) << sh; sh += 1
+            w |= (r_[0] & 511) << sh; sh += 9
+            w |= ((r_[1] if NDP == 2 else 0) & 511) << sh; sh += 9
+            for g in range(NG): w |= (rg_[g] & 511) << sh; sh += 9
+            w |= issue << sh; sh += 16
+            w |= fin << sh; sh += 16
+            f.write(f"{w:0{(sh + 3) // 4}x}\n")
+    CTRLW = sh
+    for k in range(NR_ + NM_):
+        with open(os.path.join(HW, f"desc_{k}.hex"), "w") as f:
+            for nd in desc[k]:
+                if nd.kind == "m":
+                    kids = [slot(x) for x in nd.kids]; out = [slot(nd), 0]; idx = 0; lev = 0; root = 1 if nd.root else 0; gg = 0
+                else:
+                    kids = [slot(nd), 0]; out = [slot(x) for x in nd.kids]; idx = nd.idx; lev = nd.level; root = 0; gg = 1
+                w = gg | (kids[0] << 1) | (kids[1] << 17) | ((idx & 0xffffffff) << 33) | (lev << 65) | (root << 70) | (out[0] << 71) | (out[1] << 87)
+                f.write(f"{w:026x}\n")
+    leaves = sorted(nd.idx for nd in nodes if nd.kind == "leaf") if REQ == "merkle" else [0]
+    with open(os.path.join(HW, "meta.txt"), "w") as f:
+        f.write(f"req {REQ}\nprim {prim}\nsz {SZ}\ncycles {cycles}\nctrl_bits {CTRLW}\nrings {NR_}\nmono {NM_}\nnslot {NSLOT}\n")
+        f.write(f"blocks {' '.join(str(len(R['blocks'])) for R in rings)}\nmax_issue_nodes {maxi}\nmax_finish_nodes {maxf}\n")
+        f.write(f"ring_blocks {';'.join(','.join(str(b) for b in R['blocks']) for R in rings)}\nring_lblocks {';'.join(','.join(str(b) for b in R['lblocks']) for R in rings)}\n")
+        f.write(f"ring_lo {' '.join(str(R['lo']) for R in rings)}\nring_hi {' '.join(str(R['hi']) for R in rings)}\nring_llo {' '.join(str(R['llo']) for R in rings)}\nring_lhi {' '.join(str(R['lhi']) for R in rings)}\n")
+        f.write(f"spans {';'.join(','.join(str(g) for g in R['spans']) for R in rings)}\nglo {' '.join(str(x) for x in GLO)}\nghi {' '.join(str(x) for x in GHI)}\nbases {' '.join(str(B) for B in BASES)}\nbb {' '.join(str(x) for x in BB)}\nhb {' '.join(str(x) for x in HB)}\n")
+        f.write(f"root_slot {slot(roots[0]) if REQ == 'merkle' else 0}\nalt {1 if ALT else 0}\nnio {NIO}\nng {NG}\n")
+    print(f"  hardware program    {HW}: {cycles:,} control words of {CTRLW} bits, descriptors per ring {[len(d) for d in desc]}, "
+          f"slots {NSLOT:,} x 32 B, max {maxi} issues / {maxf} finishes per cycle")
 print(f"  check: all GGM leaves / Merkle roots and parents vs Python reference: {'OK' if ok else 'FAIL'}")
