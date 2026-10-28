@@ -48,3 +48,23 @@ Random vectors from the Python models (`cc_block`, `compress16`, `mono`), every 
 | **`top_shared`, NB 356** (all 1,424 tree adders lent) | ChaCha20, BLAKE3, Monolith | 0 mismatches |
 
 Mutants caught: a ChaCha rotation 8 -> 9 (every word wrong), the MDS constant ROW[3] - 1 (every Monolith word wrong).
+
+## Verilator against the CPU baselines (dana336, `verify/run_verilator.sh`)
+
+`gen_tree_vectors.py` builds a depth-2 tree of every kind with the CPU baselines of `merkle_baseline` (4 random 31-bit-word
+leaves / one seed): BLAKE3 Merkle root from the official BLAKE3 C library (`blake3_hash_many`), Monolith-31 Merkle root
+from Plonky3 `p3-monolith` (equal to the scalar C++), ChaCha20 GGM leaves and BLAKE3-XOF GGM leaves (`blake3_compress_xof`)
+from `cpu_trees.dll`; each also equals the Python model. `tb_tree.cpp` runs the tree level by level on the Verilated top
+(level 1: two parents on two blocks, or two Monolith runs; level 2: the root; GGM: the seed, then two blocks) and compares
+the root / the four leaves with the CPU values:
+
+| top (Verilator 5.004, NB 2) | trees | result |
+|---|---|---|
+| `top_mono` | Monolith-31 Merkle | root = Plonky3, 0 mismatches (3 x 84 cycles) |
+| `top_chacha` | ChaCha20 GGM | 4 leaves = CPU, 0 mismatches (2 x 84) |
+| `top_blake3` | BLAKE3 Merkle, BLAKE3-XOF GGM | root = BLAKE3 C library, leaves = `blake3_compress_xof`, 0 mismatches |
+| `top_shared` | all four | 0 mismatches (767 cycles) |
+
+Verilator (and Yosys) must not evaluate the CSD tables through chains of generated `localparam`s: Verilator re-evaluates a
+function-valued localparam at every reference, which took > 10 minutes; the digit table is a literal `case` in `mono_pkg`
+(every constant with its +-2^s decomposition in a comment), and a top builds in ~3 minutes.
