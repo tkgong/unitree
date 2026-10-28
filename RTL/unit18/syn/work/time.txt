@@ -1,0 +1,32 @@
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+blake3 flat: 4520.04 s, 1699272 KB
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+chacha flat: 4612.18 s, 1548680 KB
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+blake3 hier: 4094.17 s, 600428 KB
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+chacha hier: 4153.40 s, 550468 KB
+shared flat: 8983.99 s, 5433928 KB
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+mono flat: 9043.00 s, 3643668 KB
+Warning: Replacing memory \pp with list of registers. See ../../alu_mul31_en_p2.sv:12
+Warning: Replacing memory \g_dly.d with list of registers. See ../add_tree.sv:70
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+Warning: Replacing memory \rr with list of registers. See ../mono_dp18.sv:34
+shared hier: 7556.62 s, 513528 KB
+mono hier: 7715.09 s, 196600 KB

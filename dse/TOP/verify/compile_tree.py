@@ -573,6 +573,16 @@ def finish(nd, o):
 
 
 OPENONLY = MEMSIM and "openonly" in sys.argv[5:]
+TRACE_F = next((a[6:] for a in sys.argv[5:] if a.startswith("trace=")), "")    # closed-loop trace for the RTL testbench
+TRF = open(TRACE_F, "w") if TRACE_F else None
+if TRF: TRF.write(f"H {NIO} {NG}" + chr(10))
+tr_cp, tr_fr, tr_ck = [], [], []
+def T_CP(dlo, n, slo):
+    if TRF: tr_cp.append((dlo, n, slo))
+def T_FR(lo, vals):
+    if TRF: tr_fr.append((lo, list(vals)))
+def T_CK(lo, n, mode):
+    if TRF: tr_ck.append((lo, n, mode, [prev[lo + i] for i in range(n)]))
 while (any(ready.values()) or busy()) and not OPENONLY:
     rec = {"t": t, "mono": 0, "issue": [], "mem": [], "fin": [], "memm": [], "finm": []}   # mem / fin: (block index, node); memm / finm: (datapath, node)
     if MEMSIM:
@@ -585,16 +595,16 @@ while (any(ready.values()) or busy()) and not OPENONLY:
         j = t % KM; s = mslots[d][j]
         if s is not None:
             if s["r"] + 1 < NISS[4]:
-                s["r"] += 1; mono_now[d] = 1; r[d] = s["r"]; lanes[B:B + 8] = prev[B:B + 8]
+                s["r"] += 1; mono_now[d] = 1; r[d] = s["r"]; lanes[B:B + 8] = prev[B:B + 8]; T_CP(B, 8, B)
                 if P2: lanes[B:B + 24] = mono_issue_lanes(mono_words(prev[B:B + 8]))
                 rec["issue"].append(("PIPE", f"M{d}", s["r"], [s["node"].id]))
             else:
-                finish(s["node"], out_words(prev[B:B + 8], 4)); mem_writes += 1; rec["finm"].append((d, s["node"]))
+                T_CK(B, 8, 1); finish(s["node"], out_words(prev[B:B + 8], 4)); mem_writes += 1; rec["finm"].append((d, s["node"]))
                 mslots[d][j] = None; s = None; mused[d] -= 1
         if s is None and mused[d] < MSLOTS and ready[4] and (nd := (pop_fit(ready[4]) if MEMSIM else heapq.heappop(ready[4])[2])) is not None:
             mslots[d][j] = {"node": nd, "r": 0}; mused[d] += 1
             if MEMSIM: mem_take(nd)
-            body, _ = node_in(nd); lanes[B:B + len(body)] = body; mono_now[d] = 1; r[d] = 0
+            body, _ = node_in(nd); lanes[B:B + len(body)] = body; mono_now[d] = 1; r[d] = 0; T_FR(B, body)
             mem_reads += 2; live -= sum(1 for k in nd.kids if k.kind != "leaf")
             rec["issue"].append(("MEM", f"M{d}", 0, [nd.id])); rec["memm"].append((d, nd))
     # ---- Poseidon2 programs (one per node): own issues of three latencies, the internal S-boxes packed 16 per issue ----
@@ -670,12 +680,12 @@ while (any(ready.values()) or busy()) and not OPENONLY:
         if s is not None:
             S_ = rings[s.get("src", ri)]                              # the ring the group traversed last
             if s["r"] + 1 < max(NISS[nd.prim] for nd in s["nodes"]):
-                lanes[lo:hi] = prev[S_["llo"]:S_["lhi"]]              # the last span's output re-enters span 0
+                lanes[lo:hi] = prev[S_["llo"]:S_["lhi"]]; T_CP(lo, hi - lo, S_["llo"])   # the last span's output re-enters span 0
                 s["r"] += 1; rg[g0] = RV(s["r"])
                 rec["issue"].append(("PIPE", ri, s["r"], [nd.id for nd in s["nodes"]]))
             else:
                 for b, nd in enumerate(s["nodes"]):
-                    jb = S_["lblocks"][b]; finish(nd, out_words(prev[BB[jb]:BB[jb] + 18], nd.prim)); mem_writes += 1; rec["fin"].append((jb, nd))
+                    jb = S_["lblocks"][b]; T_CK(BB[jb], 18, 0); finish(nd, out_words(prev[BB[jb]:BB[jb] + 18], nd.prim)); mem_writes += 1; rec["fin"].append((jb, nd))
                 R["slots"][j] = None; s = None
         if s is None and t in plan[ri]:
             grp = plan[ri].pop(t)
@@ -683,8 +693,8 @@ while (any(ready.values()) or busy()) and not OPENONLY:
             rec["issue"].append(("MEM", ri, 0, [nd.id for nd in grp])); rg[g0] = 0
             for b, nd in enumerate(grp):
                 body, h = node_in(nd); bi = R["blocks"][b]; rec["mem"].append((bi, nd))
-                lanes[BB[bi]:BB[bi] + len(body)] = body
-                if h is not None and not (bi < COLOC): lanes[HB[bi]:HB[bi] + 4] = h
+                lanes[BB[bi]:BB[bi] + len(body)] = body; T_FR(BB[bi], body)
+                if h is not None and not (bi < COLOC): lanes[HB[bi]:HB[bi] + 4] = h; T_FR(HB[bi], h)
                 if nd.kind == "m":
                     mem_reads += 2; live -= sum(1 for k in nd.kids if k.kind != "leaf")
                     for k in nd.kids:
@@ -697,7 +707,7 @@ while (any(ready.values()) or busy()) and not OPENONLY:
             p = (t - R["c"][i]) % K; sp = R["slots"][p]
             if sp is None: continue
             gi, gp = R["spans"][i], R["spans"][i - 1]
-            lanes[GLO[gi]:GHI[gi]] = prev[GLO[gp]:GHI[gp]]; rg[gi] = RV(sp["r"])
+            lanes[GLO[gi]:GHI[gi]] = prev[GLO[gp]:GHI[gp]]; T_CP(GLO[gi], GHI[gi] - GLO[gi], GLO[gp]); rg[gi] = RV(sp["r"])
     # ---- plan ARX starts LEAD cycles ahead ----
     tp = t + LEAD
     for ri, R in enumerate(rings):
@@ -713,14 +723,22 @@ while (any(ready.values()) or busy()) and not OPENONLY:
     # ---- h lanes of the co-located blocks (ring 0): delivered LEAD cycles before the start, then recirculated ----
     htap = 0
     if usehchain:
-        if not any(mono_now): lanes[BASE:BASE + 8] = prev[BASE:BASE + 8]; htap = 1
+        if not any(mono_now): lanes[BASE:BASE + 8] = prev[BASE:BASE + 8]; T_CP(BASE, 8, BASE); htap = 1
         if tp in plan[0]:
             for b, nd in enumerate(plan[0][tp]):
                 if b < COLOC:
                     body, h = node_in(nd)
-                    if h is not None: lanes[BASE + 4 * b:BASE + 4 * b + 4] = h
+                    if h is not None: lanes[BASE + 4 * b:BASE + 4 * b + 4] = h; T_FR(BASE + 4 * b, h)
     live_max = max(live_max, live); live_top_max = max(live_top_max, live_top); ready_max = max(globals().get('ready_max', 0), len(ready[1]) + len(ready[2]) + len(ready[4]))
     rec["ctrl"] = (list(mono_now), list(r), list(rg), htap)
+    if TRF:
+        rgv = 0
+        for g in range(NG): rgv |= (rg[g] & 511) << (9 * g)
+        TRF.write(f"T {mono_now[0]} {mono_now[1] if NDP == 2 else 0} {htap} {BLAKE} {r[0]} {r[1] if NDP == 2 else 0} {rgv:x}" + chr(10))
+        for lo, n, mode, vals in tr_ck: TRF.write(f"E {lo} {n} {mode} " + " ".join(f"{v:x}" for v in vals) + chr(10))
+        for lo, vals in tr_fr: TRF.write(f"F {lo} " + " ".join(f"{v:x}" for v in vals) + chr(10))
+        for dlo, n, slo in tr_cp: TRF.write(f"P {dlo} {n} {slo}" + chr(10))
+        tr_cp.clear(); tr_fr.clear(); tr_ck.clear()
     o = ARR()
     if NENG: stepe(mono_now[0], mono_now[1] if NDP == 2 else 0, htap, BLAKE, r[0], r[1] if NDP == 2 else 0, IG(*rg), IEN(*er), ARR(*lanes), o)
     else: stepx(mono_now[0], mono_now[1] if NDP == 2 else 0, htap, BLAKE, r[0], r[1] if NDP == 2 else 0, IG(*rg), ARR(*lanes), o)
@@ -890,6 +908,7 @@ if MEMSIM:
         print(f"    HBM2 commands     ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
               f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation; write buffers drained {drain} cycles after the last cycle")
         print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
+if TRF: TRF.write("Z" + chr(10)); TRF.close(); print(f"  trace               {TRACE_F}: {cycles:,} cycles")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
 HW = next((a[3:] for a in sys.argv[5:] if a.startswith("hw=")), "")
 if HW:                                                                                # the hardware program (RTL/fsm): control words + per-ring descriptors
