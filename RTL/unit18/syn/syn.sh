@@ -2,7 +2,8 @@
 # syn.sh - Yosys + ABC, Nangate45 area-only mapping of the hand-written tops (dana336). Two runs per top:
 #   flat: synth -flatten  -> total, flip-flops, combinational
 #   hier: the alu_* modules kept as hierarchy -> the ALU area (instances x area each) and the operator counts
-# Results: $WORK/<top>_{flat,hier}.txt (default work); NET=1 also writes the flat gate netlist $WORK/<top>_flat.v (power).
+# Results: $WORK/<top>_{flat,hier}.txt (default work); NET=1 also writes the flat gate netlist $WORK/<top>_flat.v (power / STA);
+# ABC_D=<ps> maps for delay (abc -D: delay target, buffering and sizing) instead of area.
 #   sh syn.sh [top ...]    (shared mono chacha blake3)
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
@@ -17,7 +18,7 @@ read_verilog -sv -I.. $SRC ../unit18_$t.sv
 hierarchy -top unit18_$t
 synth -top unit18_$t $FL
 dfflibmap -liberty $LIB
-abc -liberty $LIB
+abc ${ABC_D:+-D $ABC_D} -liberty $LIB
 opt_clean -purge
 tee -o $WK/${t}_$mode.txt stat -liberty $LIB
 EOF
