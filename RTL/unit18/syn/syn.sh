@@ -18,7 +18,7 @@ for t in ${*:-shared mono chacha blake3}; do
 read_verilog -sv -I.. $SRC ../unit18_$t.sv
 hierarchy -top unit18_$t
 synth -top unit18_$t $FL ${ADDER:+-run :fine}
-${ADDER:+techmap -map +/choices/$ADDER.v}
+${ADDER:+techmap -map +/techmap.v -map +/choices/$ADDER.v}
 ${ADDER:+synth -top unit18_$t $FL -run fine:}
 dfflibmap -liberty $LIB
 abc ${ABC_D:+-D $ABC_D} -liberty $LIB
