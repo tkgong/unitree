@@ -26,3 +26,6 @@ memsim/ramsim/build/
 memsim/ramsim/build.log
 memsim/ramsim/ext/
 memsim/ext/
+RTL/fsm/verify/vec/
+RTL/fsm/verify/sim_*.log
+RTL/fsm/syn/work/
