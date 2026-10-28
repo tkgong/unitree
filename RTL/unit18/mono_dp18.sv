@@ -4,12 +4,14 @@
 // The program (compile_tree.py) re-issues a state 7 times (r = 0..6): r = 0 is the Concrete-only pass the permutation
 // starts with, r = 1..6 the rounds (Bars, Bricks, Concrete, round constant RC[r-1] for r <= 5).
 //   L1 canon + Bars (r >= 1)        L2-L3 squares x_{i-1}^2 (two-stage multipliers, en = 0 on r = 0)
-//   L4 Bricks b_i = x_i + lo31 + hi31 of the square, folded to <= p
+//   L4 Bricks b_i = x_i + lo31 + hi31 of the square (alu_csa31 + alu_addf: one carry chain), folded to <= p
 //   L5-L18 the Concrete as the Plonky3 Karatsuba conv16 (kara_pkg: bank at L5, pre-adds, 41 reductions + CSD trees,
 //          post-adds), output folds; one adder per level, every value registered at its level.
 // NL > 0: the adders with lend index < NL (kara_pkg NODE_TAB, 32-bit adders first) are alu_lend: while no Monolith
 // state is at their level they add ea + eb for the ARX blocks (ey, the same cycle). NL = 0: all adders private (the
-// natural Monolith unit).
+// natural Monolith unit). Timing: every level is one carry chain (the reductions and output folds are alu_addf, the
+// fused add + fold), the K constants are selected a level early and registered, the issue bit is replicated per MPR
+// lent adders (the fanout of the lend select).
 module mono_dp18 #(
     parameter int NL  = 216,
     parameter int NLP = (NL > 0) ? NL : 1
@@ -24,15 +26,16 @@ module mono_dp18 #(
     input  logic [NLP*32-1:0] eb,
     output logic [NLP*32-1:0] ey
 );
-    localparam int D  = 18;
-    localparam int NN = kara_pkg::NN;
-    localparam int VW = 41;                                  // node value slot (max node width 40)
-    // ---- mono / r travel with the state ----
-    logic [D:1] mp;
+    localparam int D   = 18;
+    localparam int NN  = kara_pkg::NN;
+    localparam int VW  = 41;                                 // node value slot (max node width 40)
+    localparam int MPR = 4;                                  // lent adders per copy of the issue bit
+    localparam int NMC = (NLP + MPR - 1) / MPR;
+    // ---- mono / r travel with the state (mpc: NMC copies of the issue bit, copy c serves lent adders c*MPR..) ----
+    logic [D:1] mpc [0:NMC-1];
     logic [8:0] rr [1:D];
     always_ff @(posedge clk) begin
-        if (rst) mp <= '0;
-        else mp <= {mp[D-1:1], mono};
+        for (int c = 0; c < NMC; c++) mpc[c] <= rst ? '0 : {mpc[c][D-1:1], mono};
         rr[1] <= r;
         for (int k = 2; k <= D; k++) rr[k] <= rr[k - 1];
     end
@@ -68,13 +71,10 @@ module mono_dp18 #(
     generate
         for (genvar i = 1; i < 16; i++) begin : g_brick
             logic [61:0] sq;
-            logic [32:0] s;
-            logic [31:0] f1;
-            logic [30:0] t;
+            logic [30:0] cs, cc, t;
             alu_mul31_en_p2 u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq));
-            assign s  = {2'b00, xb3[i*31 +: 31]} + {2'b00, sq[30:0]} + {2'b00, sq[61:31]};   // <= 3p
-            assign f1 = {1'b0, s[30:0]} + {30'd0, s[32:31]};                                   // <= p + 3
-            alu_fold31 u_f (.r(f1), .t(t));
+            alu_csa31 u_c (.x(xb3[i*31 +: 31]), .y(sq[30:0]), .z(sq[61:31]), .s(cs), .cr(cc));   // cs + cc = b_i (mod p)
+            alu_addf #(.H(31)) u_f (.a({1'b0, cs}), .b({1'b0, cc}), .t(t));                      // <= p
             always_ff @(posedge clk) br[i*31 +: 31] <= t;
         end
     endgenerate
@@ -93,12 +93,10 @@ module mono_dp18 #(
             localparam logic [25:0] MT = kara_pkg::MUL_TAB[m*26 +: 26];
             localparam int IN = MT[25:16];
             localparam int WI = MT[10:5];
-            logic [31:0] t1;
             logic [30:0] t2, rq;
             logic [VW-1:0] w;
             assign w  = v[IN*VW +: VW];                      // the input node is registered at the level before
-            alu_addp #(.W(32)) u_r1 (.a({1'b0, w[30:0]}), .b({{(63 - WI){1'b0}}, w[WI-1:31]}), .y(t1));
-            alu_fold31 u_r2 (.r(t1), .t(t2));
+            alu_addf #(.H(31)) u_r (.a({1'b0, w[30:0]}), .b({{(63 - WI){1'b0}}, w[WI-1:31]}), .t(t2));
             always_ff @(posedge clk) rq <= t2;
             assign redv[m*31 +: 31] = rq;
         end
@@ -144,7 +142,7 @@ module mono_dp18 #(
                 localparam int KA = (KD == 0) ? 0 : int'(TA[49:47]);
                 logic [W-1:0]  a, b, s, q;
                 logic [VW-1:0] ra, rb;
-                logic [30:0]   kc;
+                logic [30:0]   kc, kcq;
                 if (KD == 0) begin : g_bank                  // bank entry A: kind A / 8, j = A % 8
                     localparam int BK = A / 8;
                     localparam int BJ = A % 8;
@@ -161,10 +159,10 @@ module mono_dp18 #(
                     end else if (DB == 1) begin : g_rb1 assign rb = vd1[B*VW +: VW];
                     end else if (DB == 2) begin : g_rb2 assign rb = vd2[B*VW +: VW];
                     end else begin : g_rb3          assign rb = vd3[B*VW +: VW]; end
-                    if (KA == 5) begin : g_ka                // operand A is the output constant K_i (i = its A field)
-                        localparam int KI = int'(TA[35:26]);
+                    if (KA == 5) begin : g_ka                // operand A is the output constant K_i (i = its A field):
+                        localparam int KI = int'(TA[35:26]);  // selected by the state's r one level early, registered
                         always_comb begin
-                            case (rr[LV - 1])
+                            case (rr[LV - 2])
                                 9'd1: kc = kara_pkg::KC_TAB[(1*16 + KI)*31 +: 31];
                                 9'd2: kc = kara_pkg::KC_TAB[(2*16 + KI)*31 +: 31];
                                 9'd3: kc = kara_pkg::KC_TAB[(3*16 + KI)*31 +: 31];
@@ -173,7 +171,8 @@ module mono_dp18 #(
                                 default: kc = kara_pkg::KC_TAB[KI*31 +: 31];
                             endcase
                         end
-                        assign a = {{(W - 31){1'b0}}, kc};
+                        always_ff @(posedge clk) kcq <= kc;
+                        assign a = {{(W - 31){1'b0}}, kcq};
                     end else if (NA) begin : g_na
                         assign a = {{(W - WA){1'b0}}, ~ra[WA-1:0]};
                     end else begin : g_pa
@@ -189,7 +188,7 @@ module mono_dp18 #(
                     logic [W-1:0] la, lb;
                     assign la = {{(W - 32){1'b0}}, ea[LD*32 +: 32]};
                     assign lb = {{(W - 32){1'b0}}, eb[LD*32 +: 32]};
-                    alu_lend #(.W(W)) u_add (.ext(!mp[LV - 1]), .ea(la), .eb(lb), .a(a), .b(b), .y(s));
+                    alu_lend #(.W(W)) u_add (.ext(!mpc[LD / MPR][LV - 1]), .ea(la), .eb(lb), .a(a), .b(b), .y(s));
                     assign ey[LD*32 +: 32] = s[31:0];
                 end else begin : g_priv
                     alu_addp #(.W(W)) u_add (.a(a), .b(b), .y(s));
@@ -221,12 +220,10 @@ module mono_dp18 #(
             localparam int OW  = OT[5:0];
             localparam int ND  = D - (OL + 1);                 // delay stages after the fold register
             logic [VW-1:0] ov;
-            logic [31:0]   f;
             logic [30:0]   t;
             logic [30:0]   oq [0:ND];
             assign ov = v[OID*VW +: VW];
-            alu_addp #(.W(32)) u_f1 (.a({1'b0, ov[30:0]}), .b({{(63 - OW){1'b0}}, ov[OW-1:31]}), .y(f));
-            alu_fold #(.H(OW - 31)) u_f2 (.r(f), .t(t));
+            alu_addf #(.H(OW - 31)) u_f (.a({1'b0, ov[30:0]}), .b({{(63 - OW){1'b0}}, ov[OW-1:31]}), .t(t));
             always_ff @(posedge clk) oq[0] <= t;
             for (genvar d = 1; d <= ND; d++) begin : g_dly
                 always_ff @(posedge clk) oq[d] <= oq[d - 1];

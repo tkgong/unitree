@@ -27,6 +27,8 @@ datapaths, fully pipelined (II = 1). The programs come from the software compile
 | `alu_lend #(W)` | the operand select in front of a lent adder: ARX operands (ea, eb) when `ext`, else the datapath's (a, b); the `ext ? ea : a` of `alu_core.h` |
 | `alu_addp #(W)` | private adder |
 | `alu_fold #(H)`, `alu_fold31` | M31 end-around carry |
+| `alu_addf #(H)` | fused `alu_addp #(32)` + `alu_fold #(H)`: compound adder (sum and sum + 1 in parallel, the end-around carry selects), one carry chain |
+| `alu_csa31` | three 31-bit residues to carry-save form with the end-around carry (the Bricks sum) |
 | `alu_canon #(W)` | p -> 0 |
 | `alu_bar_chunk #(W)`, `alu_bar31` | Monolith Bars S-box (8 / 8 / 8 / 7-bit chunks) |
 | `alu_mul31_en_p2` | 31 x 31 -> 62 multiplier, two pipeline stages, 0 when `en` = 0 |
