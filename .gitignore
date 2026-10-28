@@ -36,3 +36,14 @@ RTL/fsm/verify/*.vvp
 RTL/fsm/verify/prog_*/
 RTL/fsm/verify/obj_accel/
 RTL/fsm/verify/accel_run.out
+# RTL/unit18 synthesis / simulation outputs (dana336)
+RTL/unit18/syn/work*/
+RTL/unit18/syn/work*.out
+!RTL/unit18/syn/work/report.md
+!RTL/unit18/syn/work/time.txt
+RTL/unit18/verify/obj_*/
+RTL/unit18/verify/dp4/
+RTL/unit18/verify/*.out
+RTL/unit18/verify/verilator_*.log
+RTL/unit18/verify[0-9]/
+.vscode/

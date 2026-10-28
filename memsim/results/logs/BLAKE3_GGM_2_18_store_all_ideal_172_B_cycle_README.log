@@ -1,0 +1,18 @@
+# python3 verify/compile_tree.py verify/lz_16.so ggm blake3 18 sram=64 store=all bw=172 audit
+request: 1 x BLAKE3 GGM depth 18 (deep)   unit: 2 Monolith ring(s) of 19 slots x 7 traversals; ARX rings [(7, 7), (4, 7), (3, 7), (1, 7), (2, 8), (1, 9), (1, 11), (7, 7), (4, 7), (3, 7), (1, 7), (2, 8), (1, 9), (1, 11)] (blocks, period = sum over spans of latency + 1)
+  nodes computed      262,143
+  cycles              98,958   (Monolith issues 0; ARX ring traversals [97580, 97426, 97398, 97384, 97454, 97412, 97426, 97370, 97356, 97314, 97272, 97258, 97202, 97230])
+  throughput          2.649 nodes/cycle
+  memory traffic      262,143 reads, 262,143 writes of 32 B (169.5 B/cycle); live buffer high-water 262,144 x 32 B
+  pending queue       high-water 1,108 ready nodes waiting for a slot (seeds / parents not yet issued)
+  audit (liveness)    OK: max slots held by one subtree 31 <= bound 2^(TK+1) - 1 = 31 < reserve 118; stack held at most 479
+  audit               OK: SRAM <= capacity after every change, recount from node states every 997 cycles, 524,286 values written once each (16.78 MB), 1 reads, every issue had its inputs on chip and its outputs reserved, end: 0 resident slots
+    write stream rows (32 open rows; block rows staged in SRAM, written whole): level 18,472 activations (908 B each), tile 26,312 activations (637 B each), block 25,938 activations (646 B each); leaf / seed reads 1
+  memory model        SRAM 64 KB = 2,048 x 32 B, tiles of 2^4 leaves, DFS order, a tile opens while the SRAM keeps the oldest tile its reserve, nodes above the tiles 0 tiles ahead, HBM 172 B/cycle, store=all
+    row staging       budget 16.0 KB; 15,908 rows written partial (over budget)
+    pipeline holds    W = 282 nodes (ring slots of the primitive); GGM lookahead theta (age + h L_max) / (2^TK - 1) from the simulated state, theta 2.714, L_max 154, window 161..502 subtrees
+    SRAM high-water   1,934 x 32 B = 60.4 KB (capacity 64 KB)
+    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 16.8 / 17.5, waiting for the HBM write 40.0 / 37.1, inputs waiting for their consumer 3.7 / 0.6
+    HBM               read 0.00 MB, write 16.78 MB = 169.5 B/cycle average; transferring in 97,548 of 98,958 cycles (99%)
+  instruction stream  98,958 words; per cycle: mono + blake bit + round indices + block/state addresses
+  check: all GGM leaves / Merkle roots and parents vs Python reference: OK

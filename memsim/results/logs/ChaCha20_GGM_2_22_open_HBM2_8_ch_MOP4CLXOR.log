@@ -1,0 +1,10 @@
+# python3 verify/compile_tree.py verify/lz_16.so ggm chacha 22 sram=64 store=all openonly open=1,64,1024 hbm=8 hmap=MOP4CLXOR
+request: ggm ChaCha20 2^22, open only (no commit run)
+  open (GGM punctures, co-path seeds, tree 2^22; top 0 levels resident on chip; 1 KB rows; HBM 256 B/cycle)
+        q nodes read per leaf   HBM KB  HBM cyc  recomp est.cyc | row activations   level    tile   block | per opened leaf  level   tile  block
+        1         22     22.0      0.7        3       0       0 |                      19      17       7 |                  19.0   17.0    7.0
+          HBM2 8 ch: level 23 cycles (30.6 B/cycle, ACT 21, row hit 5%, latency avg 18); tile 23 cycles (30.6 B/cycle, ACT 20, row hit 9%, latency avg 18); block 27 cycles (26.1 B/cycle, ACT 17, row hit 23%, latency avg 19)
+       64        960     15.0     30.0      120       0       0 |                     768     608     280 |                  12.0    9.5    4.4
+          HBM2 8 ch: level 376 cycles (81.7 B/cycle, ACT 806, row hit 16%, latency avg 72); tile 362 cycles (84.9 B/cycle, ACT 771, row hit 20%, latency avg 71); block 438 cycles (70.1 B/cycle, ACT 760, row hit 21%, latency avg 56)
+     1024     11,406     11.1    356.4    1,426       0       0 |                   8,300   5,951   3,483 |                   8.1    5.8    3.4
+          HBM2 8 ch: level 4,209 cycles (86.7 B/cycle, ACT 8,251, row hit 28%, latency avg 62); tile 3,988 cycles (91.5 B/cycle, ACT 7,806, row hit 32%, latency avg 62); block 4,592 cycles (79.5 B/cycle, ACT 7,658, row hit 33%, latency avg 48)
