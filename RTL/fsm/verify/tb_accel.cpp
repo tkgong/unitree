@@ -94,8 +94,7 @@ int main(int argc, char** argv) {
         if (!rq.empty()) rd_busy++;
         if (getenv("TRACE")) {
             uint32_t fin = dut->rootp->accel_top__DOT__u_seq__DOT__fin, iss = dut->rootp->accel_top__DOT__u_seq__DOT__issue;
-            if (fin || iss || dut->wr_valid) printf("t %llu pc %u issue %04x fin %04x wr_valid %d wr_addr %08x st %d
-", (unsigned long long)(tcyc - t0), dut->dbg_pc, iss, fin, dut->wr_valid, dut->wr_addr, (int)dut->rootp->accel_top__DOT__st);
+            if (fin || iss || dut->wr_valid) printf("t %llu pc %u issue %04x fin %04x wr_valid %d wr_addr %08x st %d\n", (unsigned long long)(tcyc - t0), dut->dbg_pc, iss, fin, dut->wr_valid, dut->wr_addr, (int)dut->rootp->accel_top__DOT__st);
         }
         tick();
         if (dut->done) done = true;
