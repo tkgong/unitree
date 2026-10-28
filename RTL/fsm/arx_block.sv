@@ -3,11 +3,10 @@
 // block executes one ARX step on its four hardware columns in place: 4 additions (on the four adders behind ea / eb / ey:
 // the block has no adders of its own), 4 xor + rotate. The diagonal half-rounds are column half-rounds on the P-permuted
 // layout: at the end of every half-round (perm) word (r, j) <- word (r, (r - j) mod 4), an involution, so the hardware
-// columns always hold (a_j, b_j, c_j, d_j) of the quarter-rounds to do. MODE: 0 ChaCha20 only, 1 BLAKE3 only, 2 both
-// (blake selects). Controls come from arx_ctrl.
-module arx_block #(
-    parameter int MODE = 2
-) (
+// columns always hold (a_j, b_j, c_j, d_j) of the quarter-rounds to do. This is the block of the SHARED PE: it runs
+// either primitive (blake selects the rotations, the message adds, the finalisation); the natural kernels use
+// cc_block / b3_block. Controls come from arx_ctrl.
+module arx_block (
     input  logic         clk,
     input  logic         ld,            // v <- in_v, m <- in_m, h <- in_h
     input  logic         en,            // a step executes this cycle (else the block holds)
@@ -52,8 +51,6 @@ module arx_block #(
     endfunction
     logic [511:0] v, m, w, vn;
     logic [255:0] h;
-    logic         is_b;
-    assign is_b = (MODE == 1) ? 1'b1 : (MODE == 0) ? 1'b0 : blake;
     function automatic logic [31:0] rotl(input logic [31:0] x, input int n);
         rotl = (x << n) | (x >> (32 - n));
     endfunction
@@ -65,13 +62,9 @@ module arx_block #(
             assign c = v[(8 + j)*32 +: 32];
             assign d = v[(12 + j)*32 +: 32];
             // message word of this column: columns take m[2j], m[2j+1]; the diagonal i sits in column (4 - i) % 4
-            if (MODE == 0) begin : g_nomsg
-                assign msg = '0;
-            end else begin : g_msg
-                localparam int DI = (4 - j) % 4;
-                assign msg = diag ? (msg_y ? m[(8 + 2*DI + 1)*32 +: 32] : m[(8 + 2*DI)*32 +: 32])
-                                  : (msg_y ? m[(2*j + 1)*32 +: 32] : m[(2*j)*32 +: 32]);
-            end
+            localparam int DI = (4 - j) % 4;
+            assign msg = diag ? (msg_y ? m[(8 + 2*DI + 1)*32 +: 32] : m[(8 + 2*DI)*32 +: 32])
+                              : (msg_y ? m[(2*j + 1)*32 +: 32] : m[(2*j)*32 +: 32]);
             assign opa = (add_sel == 2'd2) ? c : (add_sel == 2'd3) ? v[(4*ff_row + j)*32 +: 32] : a;
             assign opb = (add_sel == 2'd0) ? b : (add_sel == 2'd1) ? msg : (add_sel == 2'd2) ? d : m[(4*ff_row + j)*32 +: 32];
             assign ea[j*32 +: 32] = opa;
@@ -82,9 +75,9 @@ module arx_block #(
             logic [63:0] xx;
             alu_xor u_xor (.a({32'd0, xi}), .b({32'd0, sum}), .y(xx));
             assign r0 = rotl(xx[31:0], 16);
-            assign r1 = (MODE == 0) ? rotl(xx[31:0], 12) : (MODE == 1) ? rotl(xx[31:0], 20) : (blake ? rotl(xx[31:0], 20) : rotl(xx[31:0], 12));
-            assign r2 = (MODE == 0) ? rotl(xx[31:0], 8)  : (MODE == 1) ? rotl(xx[31:0], 24) : (blake ? rotl(xx[31:0], 24) : rotl(xx[31:0], 8));
-            assign r3 = (MODE == 0) ? rotl(xx[31:0], 7)  : (MODE == 1) ? rotl(xx[31:0], 25) : (blake ? rotl(xx[31:0], 25) : rotl(xx[31:0], 7));
+            assign r1 = blake ? rotl(xx[31:0], 20) : rotl(xx[31:0], 12);
+            assign r2 = blake ? rotl(xx[31:0], 24) : rotl(xx[31:0], 8);
+            assign r3 = blake ? rotl(xx[31:0], 25) : rotl(xx[31:0], 7);
             assign xo = (rot_sel == 2'd0) ? r0 : (rot_sel == 2'd1) ? r1 : (rot_sel == 2'd2) ? r2 : r3;
             // write-back of the four words of this column
             assign w[j*32 +: 32]        = (add_sel == 2'd0 || add_sel == 2'd1 || (add_sel == 2'd3 && ff_row == 2'd0)) ? sum : a;
@@ -111,27 +104,23 @@ module arx_block #(
             v <= in_v; m <= in_m;
         end else if (en) begin
             v <= vn;
-            if (MODE != 0 && sigma) m <= ms;
+            if (sigma) m <= ms;
         end
-        if (MODE != 0 && ld) h <= in_h;
+        if (ld) h <= in_h;
     end
-    // output: ChaCha the state; BLAKE3 the finalisation xors (8 alu_xor of 64 bits = 16 words)
+    // output: ChaCha20 the state; BLAKE3 the finalisation xors (8 alu_xor of 64 bits = 16 words)
     generate
-        if (MODE == 0) begin : g_out_cc
-            assign out = v;
-        end else begin : g_out_b3
-            for (genvar k = 0; k < 8; k++) begin : g_fx
-                logic [63:0] xa, xb, xy;
-                assign xa = {v[(2*k + 1)*32 +: 32], v[(2*k)*32 +: 32]};          // words 2k, 2k+1 (k < 4: v[0..7]; k >= 4: v[8..15])
-                if (MODE == 1) begin : g_b
-                    assign xb = (k < 4) ? {v[(2*k + 9)*32 +: 32], v[(2*k + 8)*32 +: 32]} : {h[(2*k - 7)*32 +: 32], h[(2*k - 8)*32 +: 32]};
-                end else begin : g_both
-                    assign xb = is_b ? ((k < 4) ? {v[(2*k + 9)*32 +: 32], v[(2*k + 8)*32 +: 32]} : {h[(2*k - 7)*32 +: 32], h[(2*k - 8)*32 +: 32]}) : 64'd0;
-                end
-                alu_xor u_fx (.a(xa), .b(xb), .y(xy));
-                assign out[(2*k)*32 +: 32] = xy[31:0];
-                assign out[(2*k + 1)*32 +: 32] = xy[63:32];
+        for (genvar k = 0; k < 8; k++) begin : g_fx
+            logic [63:0] xa, xb, xy;
+            assign xa = {v[(2*k + 1)*32 +: 32], v[(2*k)*32 +: 32]};
+            if (k < 4) begin : g_lo
+                assign xb = blake ? {v[(2*k + 9)*32 +: 32], v[(2*k + 8)*32 +: 32]} : 64'd0;
+            end else begin : g_hi
+                assign xb = blake ? {h[(2*k - 7)*32 +: 32], h[(2*k - 8)*32 +: 32]} : 64'd0;
             end
+            alu_xor u_fx (.a(xa), .b(xb), .y(xy));
+            assign out[(2*k)*32 +: 32]     = xy[31:0];
+            assign out[(2*k + 1)*32 +: 32] = xy[63:32];
         end
     endgenerate
 endmodule
