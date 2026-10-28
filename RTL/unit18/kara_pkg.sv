@@ -1,5 +1,5 @@
 // kara_pkg.sv - Monolith-31 (width 16) Concrete as the Plonky3 Karatsuba conv16 (41 constant multiplications), the
-// DSE method of dse/TOP/kara_dag.py, as the node tables of the hand-written datapath mono_dp18.sv:
+// DSE method of dse/TOP/kara_dag.py, as the node tables of the hand-written datapath mono_dp18.sv (packed constant tables, sliced by the generate blocks: a Yosys constant-function call clones the function body per call, which cost 10+ GB for 6000 calls):
 //   bank      U_j = x_j + x_{j+8}, V_j = x_j + ~x_{j+8}, W_j = ~x_j + x_{j+8}, N_j = ~x_j + ~x_{j+8} (j = 0..7; ~x = p - x
 //             for x <= p, 31 bits): every Karatsuba pre-add sum is a POSITIVE sum of bank entries (no negation offsets)
 //   pre       the pre-add sums (2-operand, 32..35 bits)
@@ -16,869 +16,1018 @@
 package kara_pkg;
     localparam logic [30:0] P = 31'h7FFFFFFF;
     localparam int NN = 746;   // nodes: bank 0..31, pre 32..107, K 108..123, leaves, tree adds, post adds
-    // node_tab(id) = {kind[2:0], level[4:0], W[5:0], A[9:0], negA, B[9:0], negB, lend[8:0], life[4:0]}
-    function automatic logic [49:0] node_tab(input int id);
-        case (id)
-            0: node_tab = 50'h0160000000000;
-            1: node_tab = 50'h0160004000020;
-            2: node_tab = 50'h0160008000040;
-            3: node_tab = 50'h016000c000060;
-            4: node_tab = 50'h0160010000080;
-            5: node_tab = 50'h01600140000a0;
-            6: node_tab = 50'h01600180000c0;
-            7: node_tab = 50'h016001c0000e0;
-            8: node_tab = 50'h0160020000102;
-            17: node_tab = 50'h0160044000121;
-            18: node_tab = 50'h0160048000140;
-            19: node_tab = 50'h016004c000160;
-            20: node_tab = 50'h0160050000182;
-            21: node_tab = 50'h01600540001a1;
-            22: node_tab = 50'h01600580001c0;
-            23: node_tab = 50'h016005c0001e0;
-            25: node_tab = 50'h0160064000200;
-            26: node_tab = 50'h0160068000220;
-            27: node_tab = 50'h016006c000240;
-            28: node_tab = 50'h0160070000260;
-            29: node_tab = 50'h0160074000280;
-            30: node_tab = 50'h01600780002a0;
-            31: node_tab = 50'h016007c0002c0;
-            32: node_tab = 50'h09a10000091a0;
-            33: node_tab = 50'h09a10080191c0;
-            34: node_tab = 50'h09e208010bfe0;
-            35: node_tab = 50'h09a10100291e0;
-            36: node_tab = 50'h09a1018039200;
-            37: node_tab = 50'h09e208c123fe0;
-            38: node_tab = 50'h0a2308812bfe0;
-            39: node_tab = 50'h09a10000c9220;
-            40: node_tab = 50'h09a10080d9240;
-            41: node_tab = 50'h09e209c143fe0;
-            42: node_tab = 50'h09a10100e9260;
-            43: node_tab = 50'h09a10180f9280;
-            44: node_tab = 50'h09e20a815bfe0;
-            45: node_tab = 50'h0a230a4163fe0;
-            46: node_tab = 50'h09a10000d12a0;
-            47: node_tab = 50'h09a10100f12c0;
-            48: node_tab = 50'h09e20b817bfe0;
-            49: node_tab = 50'h09a10640192e0;
-            50: node_tab = 50'h09a1074039300;
-            51: node_tab = 50'h09e20c4193fe0;
-            52: node_tab = 50'h09a1068019320;
-            53: node_tab = 50'h09e209c1a3fe0;
-            54: node_tab = 50'h09a1078039340;
-            55: node_tab = 50'h09e20a81b3fe0;
-            56: node_tab = 50'h0a230d41bbfe0;
-            57: node_tab = 50'h09a10000e1360;
-            58: node_tab = 50'h09a106c039380;
-            59: node_tab = 50'h09a10000d93a0;
-            60: node_tab = 50'h09a10700393c0;
-            61: node_tab = 50'h09e20ec1e3fe0;
-            62: node_tab = 50'h09a10680313e0;
-            63: node_tab = 50'h09a1064029400;
-            64: node_tab = 50'h09a10640d1420;
-            65: node_tab = 50'h09a1014031440;
-            66: node_tab = 50'h09e210020bfe0;
-            67: node_tab = 50'h09a1070031460;
-            68: node_tab = 50'h09e20b821bfe0;
-            69: node_tab = 50'h09a10640d9480;
-            70: node_tab = 50'h09a10140394a0;
-            71: node_tab = 50'h09e2114233fe0;
-            72: node_tab = 50'h09a10680d94c0;
-            73: node_tab = 50'h09e209c243fe0;
-            74: node_tab = 50'h09a10700294e0;
-            75: node_tab = 50'h09e2128123fe0;
-            76: node_tab = 50'h0a2312425bfe0;
-            77: node_tab = 50'h09a10200b9500;
-            78: node_tab = 50'h09a10540b1520;
-            79: node_tab = 50'h09a10200b1540;
-            80: node_tab = 50'h09a10540b9560;
-            81: node_tab = 50'h09a10580b9580;
-            82: node_tab = 50'h09e205428bfe0;
-            83: node_tab = 50'h0a22020293fe0;
-            84: node_tab = 50'h09a104c0a15a0;
-            85: node_tab = 50'h09a10440915c0;
-            86: node_tab = 50'h09a10480a15e0;
-            87: node_tab = 50'h09a1044099600;
-            88: node_tab = 50'h09a1048099620;
-            89: node_tab = 50'h09e20442c3fe0;
-            90: node_tab = 50'h0a221640a3fe0;
-            91: node_tab = 50'h09a10200a1640;
-            92: node_tab = 50'h09a104c0b9660;
-            93: node_tab = 50'h09a1020099680;
-            94: node_tab = 50'h09a10500b96a0;
-            95: node_tab = 50'h09e21742f3fe0;
-            96: node_tab = 50'h09a10480b16c0;
-            97: node_tab = 50'h09a10440a96e0;
-            98: node_tab = 50'h09e2154273fe0;
-            99: node_tab = 50'h09a1020091700;
-            100: node_tab = 50'h09a10500b1720;
-            101: node_tab = 50'h09e218c323fe0;
-            102: node_tab = 50'h09e215c283fe0;
-            103: node_tab = 50'h09a1020089740;
-            104: node_tab = 50'h09e219c2c3fe0;
-            105: node_tab = 50'h09a10500a9760;
-            106: node_tab = 50'h09e21a428bfe0;
-            107: node_tab = 50'h0a231a0353fe0;
-            108: node_tab = 50'h295f000003fe0;
-            109: node_tab = 50'h295f004003fe0;
-            110: node_tab = 50'h295f008003fe0;
-            111: node_tab = 50'h295f00c003fe0;
-            112: node_tab = 50'h295f010003fe0;
-            113: node_tab = 50'h295f014003fe0;
-            114: node_tab = 50'h295f018003fe0;
-            115: node_tab = 50'h295f01c003fe0;
-            116: node_tab = 50'h295f020003fe0;
-            117: node_tab = 50'h295f024003fe0;
-            118: node_tab = 50'h295f028003fe0;
-            119: node_tab = 50'h295f02c003fe0;
-            120: node_tab = 50'h295f030003fe0;
-            121: node_tab = 50'h295f034003fe0;
-            122: node_tab = 50'h295f038003fe0;
-            123: node_tab = 50'h295f03c003fe0;
-            124: node_tab = 50'h125f000003fe0;
-            125: node_tab = 50'h125f002013fe0;
-            126: node_tab = 50'h125f00002bfe0;
-            127: node_tab = 50'h125f00007bfe0;
-            128: node_tab = 50'h125f0000dbfe0;
-            129: node_tab = 50'h125f0000ebfe0;
-            130: node_tab = 50'h125f006013fe0;
-            131: node_tab = 50'h125f004023fe0;
-            132: node_tab = 50'h125f006033fe0;
-            133: node_tab = 50'h125f004043fe0;
-            134: node_tab = 50'h125f006053fe0;
-            135: node_tab = 50'h125f004063fe0;
-            136: node_tab = 50'h125f0060dbfe0;
-            137: node_tab = 50'h125f0060ebfe0;
-            138: node_tab = 50'h125f004003fe3;
-            139: node_tab = 50'h121f00a00bfe0;
-            140: node_tab = 50'h121f00a023fe0;
-            141: node_tab = 50'h121f00a033fe0;
-            142: node_tab = 50'h121f00804bfe0;
-            143: node_tab = 50'h121f00a05bfe0;
-            144: node_tab = 50'h121f008003fe0;
-            145: node_tab = 50'h121f00e00bfe0;
-            146: node_tab = 50'h121f00e01bfe0;
-            147: node_tab = 50'h121f00e02bfe0;
-            148: node_tab = 50'h121f00e043fe0;
-            149: node_tab = 50'h121f00c053fe0;
-            150: node_tab = 50'h121f00e063fe0;
-            151: node_tab = 50'h121f00c0e3fe1;
-            152: node_tab = 50'h125f010003fe0;
-            153: node_tab = 50'h125f010013fe0;
-            154: node_tab = 50'h125f01003bfe0;
-            155: node_tab = 50'h125f012053fe0;
-            156: node_tab = 50'h125f012063fe0;
-            157: node_tab = 50'h125f0100e3fe0;
-            158: node_tab = 50'h11df016003fe0;
-            159: node_tab = 50'h11df014023fe0;
-            160: node_tab = 50'h11df01403bfe0;
-            161: node_tab = 50'h11df01606bfe0;
-            162: node_tab = 50'h11df01407bfe0;
-            163: node_tab = 50'h11df0140f3fe0;
-            164: node_tab = 50'h11df018013fe0;
-            165: node_tab = 50'h11df01a023fe0;
-            166: node_tab = 50'h11df018033fe0;
-            167: node_tab = 50'h11df018053fe0;
-            168: node_tab = 50'h11df018063fe0;
-            169: node_tab = 50'h11df01a073fe0;
-            170: node_tab = 50'h11df01a0ebfe0;
-            171: node_tab = 50'h11df018003fe0;
-            172: node_tab = 50'h121f01c013fe0;
-            173: node_tab = 50'h121f01e033fe0;
-            174: node_tab = 50'h121f01c043fe0;
-            175: node_tab = 50'h121f01c053fe0;
-            176: node_tab = 50'h121f01e063fe0;
-            177: node_tab = 50'h121f01c073fe0;
-            178: node_tab = 50'h121f01c0ebfe1;
-            179: node_tab = 50'h11df020023fe0;
-            180: node_tab = 50'h11df020033fe0;
-            181: node_tab = 50'h11df02004bfe0;
-            182: node_tab = 50'h11df02005bfe0;
-            183: node_tab = 50'h11df0200f3fe2;
-            184: node_tab = 50'h11df024023fe0;
-            185: node_tab = 50'h11df02403bfe0;
-            186: node_tab = 50'h11df02405bfe0;
-            187: node_tab = 50'h11df024073fe0;
-            188: node_tab = 50'h121f02a02bfe0;
-            189: node_tab = 50'h121f02a043fe0;
-            190: node_tab = 50'h121f028053fe0;
-            191: node_tab = 50'h121f028063fe0;
-            192: node_tab = 50'h121f028073fe0;
-            193: node_tab = 50'h121f0280f3fe0;
-            194: node_tab = 50'h121f02e02bfe0;
-            195: node_tab = 50'h121f02e043fe0;
-            196: node_tab = 50'h121f02e053fe0;
-            197: node_tab = 50'h121f02e063fe0;
-            198: node_tab = 50'h121f02c07bfe2;
-            199: node_tab = 50'h121f030013fe0;
-            200: node_tab = 50'h121f032033fe0;
-            201: node_tab = 50'h121f030043fe0;
-            202: node_tab = 50'h121f032053fe0;
-            203: node_tab = 50'h121f03006bfe0;
-            204: node_tab = 50'h121f0320ebfe0;
-            205: node_tab = 50'h121f030003fe1;
-            206: node_tab = 50'h125f034013fe0;
-            207: node_tab = 50'h125f03402bfe0;
-            208: node_tab = 50'h125f03603bfe0;
-            209: node_tab = 50'h125f03405bfe0;
-            210: node_tab = 50'h125f03407bfe0;
-            211: node_tab = 50'h125f0360ebfe0;
-            212: node_tab = 50'h125f034003fe1;
-            213: node_tab = 50'h119f038003fe0;
-            214: node_tab = 50'h119f03a023fe0;
-            215: node_tab = 50'h119f03a033fe0;
-            216: node_tab = 50'h119f038043fe0;
-            217: node_tab = 50'h119f03805bfe0;
-            218: node_tab = 50'h119f0380f3fe0;
-            219: node_tab = 50'h119f03c003fe0;
-            220: node_tab = 50'h119f03e01bfe0;
-            221: node_tab = 50'h119f03e02bfe0;
-            222: node_tab = 50'h119f03e03bfe0;
-            223: node_tab = 50'h119f03e053fe0;
-            224: node_tab = 50'h119f03c063fe0;
-            225: node_tab = 50'h119f03c0f3fe1;
-            226: node_tab = 50'h11df042003fe0;
-            227: node_tab = 50'h11df042013fe0;
-            228: node_tab = 50'h11df040023fe0;
-            229: node_tab = 50'h11df040053fe0;
-            230: node_tab = 50'h11df040063fe2;
-            231: node_tab = 50'h119f04400bfe0;
-            232: node_tab = 50'h119f04402bfe0;
-            233: node_tab = 50'h119f046043fe0;
-            234: node_tab = 50'h119f046053fe0;
-            235: node_tab = 50'h119f044063fe0;
-            236: node_tab = 50'h119f046073fe0;
-            237: node_tab = 50'h119f0440f3fe1;
-            238: node_tab = 50'h119f04a00bfe0;
-            239: node_tab = 50'h119f04802bfe0;
-            240: node_tab = 50'h119f04806bfe0;
-            241: node_tab = 50'h119f0480f3fe0;
-            242: node_tab = 50'h11df04c033fe0;
-            243: node_tab = 50'h11df04e043fe0;
-            244: node_tab = 50'h11df04e053fe0;
-            245: node_tab = 50'h11df04e063fe0;
-            246: node_tab = 50'h11df04c003fe2;
-            247: node_tab = 50'h11df052003fe0;
-            248: node_tab = 50'h11df050013fe0;
-            249: node_tab = 50'h11df050023fe0;
-            250: node_tab = 50'h11df052033fe0;
-            251: node_tab = 50'h11df050053fe0;
-            252: node_tab = 50'h11df050063fe0;
-            253: node_tab = 50'h11df052073fe0;
-            254: node_tab = 50'h11df050003fe0;
-            255: node_tab = 50'h11df05601bfe0;
-            256: node_tab = 50'h11df05603bfe0;
-            257: node_tab = 50'h11df056053fe0;
-            258: node_tab = 50'h11df056063fe0;
-            259: node_tab = 50'h11df054073fe2;
-            260: node_tab = 50'h125f05a003fe0;
-            261: node_tab = 50'h125f05a013fe0;
-            262: node_tab = 50'h125f058023fe0;
-            263: node_tab = 50'h125f058033fe0;
-            264: node_tab = 50'h125f05a043fe0;
-            265: node_tab = 50'h125f058003fe0;
-            266: node_tab = 50'h119f05e003fe0;
-            267: node_tab = 50'h119f05e013fe0;
-            268: node_tab = 50'h119f05e023fe0;
-            269: node_tab = 50'h119f05c043fe0;
-            270: node_tab = 50'h119f05c05bfe0;
-            271: node_tab = 50'h119f05c0f3fe0;
-            272: node_tab = 50'h119f062003fe0;
-            273: node_tab = 50'h119f060013fe0;
-            274: node_tab = 50'h119f060023fe0;
-            275: node_tab = 50'h119f062033fe0;
-            276: node_tab = 50'h119f06204bfe0;
-            277: node_tab = 50'h119f060063fe0;
-            278: node_tab = 50'h11df06600bfe0;
-            279: node_tab = 50'h11df066033fe0;
-            280: node_tab = 50'h11df066043fe0;
-            281: node_tab = 50'h11df06605bfe0;
-            282: node_tab = 50'h11df06406bfe0;
-            283: node_tab = 50'h11df0640f3fe0;
-            284: node_tab = 50'h119f06a013fe0;
-            285: node_tab = 50'h119f06802bfe0;
-            286: node_tab = 50'h119f06803bfe0;
-            287: node_tab = 50'h119f06a05bfe0;
-            288: node_tab = 50'h119f06806bfe0;
-            289: node_tab = 50'h119f0680f3fe0;
-            290: node_tab = 50'h119f06e00bfe0;
-            291: node_tab = 50'h119f06e01bfe0;
-            292: node_tab = 50'h119f06c02bfe0;
-            293: node_tab = 50'h119f06e03bfe0;
-            294: node_tab = 50'h119f06c053fe0;
-            295: node_tab = 50'h119f06e063fe0;
-            296: node_tab = 50'h119f06c073fe0;
-            297: node_tab = 50'h119f06c0f3fe0;
-            298: node_tab = 50'h11df072003fe0;
-            299: node_tab = 50'h11df070013fe0;
-            300: node_tab = 50'h11df072023fe0;
-            301: node_tab = 50'h11df070033fe0;
-            302: node_tab = 50'h11df072053fe0;
-            303: node_tab = 50'h11df070063fe0;
-            304: node_tab = 50'h11df070073fe1;
-            305: node_tab = 50'h11df07401bfe0;
-            306: node_tab = 50'h11df07603bfe0;
-            307: node_tab = 50'h11df07404bfe0;
-            308: node_tab = 50'h11df07406bfe0;
-            309: node_tab = 50'h11df078003fe0;
-            310: node_tab = 50'h11df07801bfe0;
-            311: node_tab = 50'h11df07a02bfe0;
-            312: node_tab = 50'h11df07a03bfe0;
-            313: node_tab = 50'h11df07804bfe0;
-            314: node_tab = 50'h11df078073fe0;
-            315: node_tab = 50'h11df0780f3fe1;
-            316: node_tab = 50'h125f07c003fe0;
-            317: node_tab = 50'h125f07e023fe0;
-            318: node_tab = 50'h125f07e043fe0;
-            319: node_tab = 50'h125f07c053fe0;
-            320: node_tab = 50'h125f07e06bfe0;
-            321: node_tab = 50'h125f07c07bfe0;
-            322: node_tab = 50'h125f07c0f3fe1;
-            323: node_tab = 50'h11df080003fe0;
-            324: node_tab = 50'h11df082013fe0;
-            325: node_tab = 50'h11df08002bfe0;
-            326: node_tab = 50'h11df08203bfe0;
-            327: node_tab = 50'h11df08004bfe0;
-            328: node_tab = 50'h11df080063fe0;
-            329: node_tab = 50'h11df086013fe0;
-            330: node_tab = 50'h11df086023fe0;
-            331: node_tab = 50'h11df084033fe0;
-            332: node_tab = 50'h11df084043fe0;
-            333: node_tab = 50'h11df08605bfe0;
-            334: node_tab = 50'h11df08406bfe0;
-            335: node_tab = 50'h11df0840f3fe1;
-            336: node_tab = 50'h121f088003fe0;
-            337: node_tab = 50'h121f08801bfe0;
-            338: node_tab = 50'h121f08a033fe0;
-            339: node_tab = 50'h121f08a043fe0;
-            340: node_tab = 50'h121f08a053fe0;
-            341: node_tab = 50'h121f08a063fe0;
-            342: node_tab = 50'h121f088073fe0;
-            343: node_tab = 50'h121f0880f3fe0;
-            344: node_tab = 50'h11df08e00bfe0;
-            345: node_tab = 50'h11df08e033fe0;
-            346: node_tab = 50'h11df08c053fe0;
-            347: node_tab = 50'h11df08e06bfe0;
-            348: node_tab = 50'h11df08c003fe2;
-            349: node_tab = 50'h11df090003fe0;
-            350: node_tab = 50'h11df090013fe0;
-            351: node_tab = 50'h11df092023fe0;
-            352: node_tab = 50'h11df092033fe0;
-            353: node_tab = 50'h11df090053fe0;
-            354: node_tab = 50'h11df090063fe0;
-            355: node_tab = 50'h11df090073fe1;
-            356: node_tab = 50'h121f094013fe0;
-            357: node_tab = 50'h121f096023fe0;
-            358: node_tab = 50'h121f09603bfe0;
-            359: node_tab = 50'h121f09605bfe0;
-            360: node_tab = 50'h121f094073fe2;
-            361: node_tab = 50'h121f09a003fe0;
-            362: node_tab = 50'h121f09a013fe0;
-            363: node_tab = 50'h121f09a02bfe0;
-            364: node_tab = 50'h121f09a03bfe0;
-            365: node_tab = 50'h121f09a04bfe0;
-            366: node_tab = 50'h121f09a05bfe0;
-            367: node_tab = 50'h121f098003fe1;
-            368: node_tab = 50'h121f09c003fe0;
-            369: node_tab = 50'h121f09e02bfe0;
-            370: node_tab = 50'h121f09c043fe0;
-            371: node_tab = 50'h121f09e053fe0;
-            372: node_tab = 50'h121f09e063fe0;
-            373: node_tab = 50'h121f09c07bfe0;
-            374: node_tab = 50'h121f09c0f3fe1;
-            375: node_tab = 50'h125f0a0003fe0;
-            376: node_tab = 50'h125f0a2013fe0;
-            377: node_tab = 50'h125f0a0033fe0;
-            378: node_tab = 50'h125f0a004bfe0;
-            379: node_tab = 50'h125f0a206bfe0;
-            380: node_tab = 50'h125f0a007bfe0;
-            381: node_tab = 50'h125f0a00f3fe1;
-            382: node_tab = 50'h1aa01f03e82e0;
-            383: node_tab = 50'h1aa01f83f8300;
-            384: node_tab = 50'h1aa0200408321;
-            385: node_tab = 50'h1ae15f8bf9780;
-            386: node_tab = 50'h1b22604c03fe1;
-            387: node_tab = 50'h1aa0208418340;
-            388: node_tab = 50'h1aa0210428360;
-            389: node_tab = 50'h1aa0218438380;
-            390: node_tab = 50'h1aa02204483a0;
-            391: node_tab = 50'h1ae160cc217a0;
-            392: node_tab = 50'h1ae1614c317c0;
-            393: node_tab = 50'h1b2261cc43fe0;
-            394: node_tab = 50'h1b63624453fe0;
-            395: node_tab = 50'h1a6022c4603c0;
-            396: node_tab = 50'h1a602344703e0;
-            397: node_tab = 50'h1a6023c480401;
-            398: node_tab = 50'h1aa162cc617e0;
-            399: node_tab = 50'h1ae2638c6bfe0;
-            400: node_tab = 50'h1a60244490420;
-            401: node_tab = 50'h1a6024c4a0440;
-            402: node_tab = 50'h1a602544b0460;
-            403: node_tab = 50'h1aa1640c89800;
-            404: node_tab = 50'h1aa16484b9820;
-            405: node_tab = 50'h1ae264cca3fe0;
-            406: node_tab = 50'h1aa02604c8480;
-            407: node_tab = 50'h1aa02684d84a0;
-            408: node_tab = 50'h1aa02704e84c1;
-            409: node_tab = 50'h1ae1658cb9840;
-            410: node_tab = 50'h1b22664cc3fe0;
-            411: node_tab = 50'h1a202784f84e0;
-            412: node_tab = 50'h1a20280508500;
-            413: node_tab = 50'h1a20288518521;
-            414: node_tab = 50'h1a6166cce1860;
-            415: node_tab = 50'h1aa2678cebfe0;
-            416: node_tab = 50'h1a20290528540;
-            417: node_tab = 50'h1a20298538560;
-            418: node_tab = 50'h1a202a0548580;
-            419: node_tab = 50'h1a202a85585a0;
-            420: node_tab = 50'h1a61680d09880;
-            421: node_tab = 50'h1a61688d198a0;
-            422: node_tab = 50'h1aa2690d2bfe0;
-            423: node_tab = 50'h1a602b05685c0;
-            424: node_tab = 50'h1a602b85785e0;
-            425: node_tab = 50'h1a602c0588600;
-            426: node_tab = 50'h1aa169cd418c0;
-            427: node_tab = 50'h1aa16a45918e0;
-            428: node_tab = 50'h1ae26a8d5bfe0;
-            429: node_tab = 50'h1a202cc5a0620;
-            430: node_tab = 50'h1a202d45b0640;
-            431: node_tab = 50'h1a616b4d71900;
-            432: node_tab = 50'h1aa26bc5bbfe0;
-            433: node_tab = 50'h1a202e05c8660;
-            434: node_tab = 50'h1a202e85d8680;
-            435: node_tab = 50'h1a616c4d91921;
-            436: node_tab = 50'h1a602f05e86a0;
-            437: node_tab = 50'h1a602f85f86c0;
-            438: node_tab = 50'h1a603006086e1;
-            439: node_tab = 50'h1aa16d0da9940;
-            440: node_tab = 50'h1ae26dcdb3fe0;
-            441: node_tab = 50'h1a60308618700;
-            442: node_tab = 50'h1a60310628720;
-            443: node_tab = 50'h1aa16e4dd1960;
-            444: node_tab = 50'h1ae26ec633fe0;
-            445: node_tab = 50'h1a6031c640740;
-            446: node_tab = 50'h1a60324650760;
-            447: node_tab = 50'h1a6032c660780;
-            448: node_tab = 50'h1aa16f4df1980;
-            449: node_tab = 50'h1aa16fc6699a0;
-            450: node_tab = 50'h1ae2700e0bfe0;
-            451: node_tab = 50'h1aa03386787a0;
-            452: node_tab = 50'h1aa03406887c0;
-            453: node_tab = 50'h1aa03486987e0;
-            454: node_tab = 50'h1ae170ce219c0;
-            455: node_tab = 50'h1ae17146a19e0;
-            456: node_tab = 50'h1b22718e3bfe0;
-            457: node_tab = 50'h19e03546b0800;
-            458: node_tab = 50'h19e035c6c0820;
-            459: node_tab = 50'h19e03646d0841;
-            460: node_tab = 50'h1a21724e51a00;
-            461: node_tab = 50'h1a62730e5bfe0;
-            462: node_tab = 50'h19e036c6e0860;
-            463: node_tab = 50'h19e03746f0880;
-            464: node_tab = 50'h19e037c7008a0;
-            465: node_tab = 50'h1a21738e79a20;
-            466: node_tab = 50'h1a21740709a40;
-            467: node_tab = 50'h1a62744e93fe1;
-            468: node_tab = 50'h1a203887188c0;
-            469: node_tab = 50'h1a203907288e0;
-            470: node_tab = 50'h1a61750ea9a60;
-            471: node_tab = 50'h1aa2758733fe0;
-            472: node_tab = 50'h19e039c740900;
-            473: node_tab = 50'h19e03a4750920;
-            474: node_tab = 50'h19e03ac760940;
-            475: node_tab = 50'h1a21760ec9a80;
-            476: node_tab = 50'h1a21768769aa0;
-            477: node_tab = 50'h1a6276cee3fe1;
-            478: node_tab = 50'h19e03b8778960;
-            479: node_tab = 50'h19e03c0788980;
-            480: node_tab = 50'h1a21778ef9ac1;
-            481: node_tab = 50'h1a203c87989a0;
-            482: node_tab = 50'h1a203d07a89c0;
-            483: node_tab = 50'h1a61784f11ae0;
-            484: node_tab = 50'h1aa278c7b3fe0;
-            485: node_tab = 50'h1a203dc7c09e0;
-            486: node_tab = 50'h1a203e47d0a00;
-            487: node_tab = 50'h1a203ec7e0a20;
-            488: node_tab = 50'h1a203f47f0a40;
-            489: node_tab = 50'h1a61794f33fe0;
-            490: node_tab = 50'h1a6179cf43fe0;
-            491: node_tab = 50'h1aa27a4f53fe0;
-            492: node_tab = 50'h1a203fc800a60;
-            493: node_tab = 50'h1a20404810a80;
-            494: node_tab = 50'h1a617b0f6bfe0;
-            495: node_tab = 50'h1aa27b881bfe0;
-            496: node_tab = 50'h1aa0410828aa0;
-            497: node_tab = 50'h1aa0418838ac0;
-            498: node_tab = 50'h1aa0420848ae1;
-            499: node_tab = 50'h1ae17c0f8bfe0;
-            500: node_tab = 50'h1b227ccf93fe0;
-            501: node_tab = 50'h19e0428858b00;
-            502: node_tab = 50'h19e0430868b20;
-            503: node_tab = 50'h19e0438878b41;
-            504: node_tab = 50'h1a217d4fb3fe0;
-            505: node_tab = 50'h1a627e0fbbfe0;
-            506: node_tab = 50'h19e0440888b60;
-            507: node_tab = 50'h19e0448898b80;
-            508: node_tab = 50'h19e04508a8ba1;
-            509: node_tab = 50'h1a217e8fdbfe0;
-            510: node_tab = 50'h1a627f4fe3fe0;
-            511: node_tab = 50'h1a204588b8bc0;
-            512: node_tab = 50'h1a204608c8be0;
-            513: node_tab = 50'h1a204688d8c01;
-            514: node_tab = 50'h1a617fd003fe0;
-            515: node_tab = 50'h1aa280900bfe0;
-            516: node_tab = 50'h19e04708e8c20;
-            517: node_tab = 50'h19e04788f8c40;
-            518: node_tab = 50'h19e0480908c61;
-            519: node_tab = 50'h1a2181102bfe0;
-            520: node_tab = 50'h1a6281d033fe0;
-            521: node_tab = 50'h19e0488918c80;
-            522: node_tab = 50'h19e0490928ca0;
-            523: node_tab = 50'h19e0498938cc0;
-            524: node_tab = 50'h19e04a0948ce0;
-            525: node_tab = 50'h1a21825053fe0;
-            526: node_tab = 50'h1a2182d063fe0;
-            527: node_tab = 50'h1a62835073fe1;
-            528: node_tab = 50'h1a204a8958d00;
-            529: node_tab = 50'h1a204b0968d20;
-            530: node_tab = 50'h1a204b8978d40;
-            531: node_tab = 50'h1a6184108bfe0;
-            532: node_tab = 50'h1a61848983fe0;
-            533: node_tab = 50'h1aa284d0a3fe0;
-            534: node_tab = 50'h1a204c4990d60;
-            535: node_tab = 50'h1a204cc9a0d80;
-            536: node_tab = 50'h1a618590bbfe1;
-            537: node_tab = 50'h1a204d49b0da0;
-            538: node_tab = 50'h1a204dc9c0dc0;
-            539: node_tab = 50'h1a204e49d0de0;
-            540: node_tab = 50'h1a618650d3fe0;
-            541: node_tab = 50'h1a6186c9dbfe0;
-            542: node_tab = 50'h1aa28710ebfe0;
-            543: node_tab = 50'h1aa04f09e8e00;
-            544: node_tab = 50'h1aa04f89f8e20;
-            545: node_tab = 50'h1aa0500a08e40;
-            546: node_tab = 50'h1ae187d103fe0;
-            547: node_tab = 50'h1ae1884a13fe0;
-            548: node_tab = 50'h1b2288911bfe0;
-            549: node_tab = 50'h1a2050ca20e60;
-            550: node_tab = 50'h1a20514a30e80;
-            551: node_tab = 50'h1a2051ca40ea1;
-            552: node_tab = 50'h1a61895133fe0;
-            553: node_tab = 50'h1aa28a113bfe0;
-            554: node_tab = 50'h1a20524a50ec0;
-            555: node_tab = 50'h1a2052ca60ee0;
-            556: node_tab = 50'h1a20534a70f00;
-            557: node_tab = 50'h1a618a915bfe0;
-            558: node_tab = 50'h1a618b0a7bfe0;
-            559: node_tab = 50'h1aa28b5173fe0;
-            560: node_tab = 50'h1a60540a88f20;
-            561: node_tab = 50'h1a60548a98f40;
-            562: node_tab = 50'h1a60550aa8f60;
-            563: node_tab = 50'h1a60558ab8f80;
-            564: node_tab = 50'h1aa18c118bfe0;
-            565: node_tab = 50'h1aa18c919bfe0;
-            566: node_tab = 50'h1ae28d11abfe0;
-            567: node_tab = 50'h1a20560ac8fa0;
-            568: node_tab = 50'h1a20568ad8fc0;
-            569: node_tab = 50'h1a618dd1c3fe0;
-            570: node_tab = 50'h1aa28e4ae3fe0;
-            571: node_tab = 50'h1a20574af0fe0;
-            572: node_tab = 50'h1a2057cb01000;
-            573: node_tab = 50'h1a20584b11020;
-            574: node_tab = 50'h1a618ed1e3fe0;
-            575: node_tab = 50'h1a618f4b1bfe0;
-            576: node_tab = 50'h1aa28f91fbfe0;
-            577: node_tab = 50'h1a60590b29040;
-            578: node_tab = 50'h1a60598b39060;
-            579: node_tab = 50'h1aa1905213fe0;
-            580: node_tab = 50'h1ae290cb43fe0;
-            581: node_tab = 50'h1a605a4b51080;
-            582: node_tab = 50'h1a605acb610a0;
-            583: node_tab = 50'h1a605b4b710c0;
-            584: node_tab = 50'h1aa1915233fe0;
-            585: node_tab = 50'h1aa191cb7bfe0;
-            586: node_tab = 50'h1ae292124bfe0;
-            587: node_tab = 50'h1a605c0b890e0;
-            588: node_tab = 50'h1a605c8b99100;
-            589: node_tab = 50'h1a605d0ba9120;
-            590: node_tab = 50'h1aa192d263fe0;
-            591: node_tab = 50'h1aa1934bb3fe0;
-            592: node_tab = 50'h1ae293927bfe1;
-            593: node_tab = 50'h1aa05dcbc1140;
-            594: node_tab = 50'h1aa05e4bd1160;
-            595: node_tab = 50'h1aa05ecbe1180;
-            596: node_tab = 50'h1ae1945293fe0;
-            597: node_tab = 50'h1ae194cbebfe0;
-            598: node_tab = 50'h1b229512abfe0;
-            599: node_tab = 50'h23a3608c53fe0;
-            600: node_tab = 50'h232363ccaffe2;
-            601: node_tab = 50'h23e49612bbfe0;
-            602: node_tab = 50'h22e36cccfbfe0;
-            603: node_tab = 50'h22e36c2d33fe1;
-            604: node_tab = 50'h232470b2d3fe0;
-            605: node_tab = 50'h236596d2e3fe2;
-            606: node_tab = 50'h24259752cbfe0;
-            607: node_tab = 50'h22a3782eebfe1;
-            608: node_tab = 50'h22e374ef7bfe0;
-            609: node_tab = 50'h232497d303fe0;
-            610: node_tab = 50'h22a3820ff7fe1;
-            611: node_tab = 50'h22e383f0f3fe0;
-            612: node_tab = 50'h232498931bfe1;
-            613: node_tab = 50'h22a3734fcffe0;
-            614: node_tab = 50'h22e38eb17bfe0;
-            615: node_tab = 50'h22e490132bfe1;
-            616: node_tab = 50'h2324943333fe0;
-            617: node_tab = 50'h236599d30bfe0;
-            618: node_tab = 50'h2365991343fe0;
-            619: node_tab = 50'h23a69a5353fe0;
-            620: node_tab = 50'h23e61b135bfe1;
-            621: node_tab = 50'h24679b12f3fe0;
-            622: node_tab = 50'h23a4608c57fe0;
-            623: node_tab = 50'h232363ccabfe0;
-            624: node_tab = 50'h236466b37bfe1;
-            625: node_tab = 50'h23e59c1373fe0;
-            626: node_tab = 50'h22e367ed37fe0;
-            627: node_tab = 50'h23246b1393fe0;
-            628: node_tab = 50'h22e36ced87fe0;
-            629: node_tab = 50'h23246e13a3fe0;
-            630: node_tab = 50'h23236f0e13fe0;
-            631: node_tab = 50'h236472339bfe0;
-            632: node_tab = 50'h23649d53b3fe0;
-            633: node_tab = 50'h23a59dd3c3fe1;
-            634: node_tab = 50'h24269e538bfe0;
-            635: node_tab = 50'h22e38a717ffe0;
-            636: node_tab = 50'h23248d93dbfe0;
-            637: node_tab = 50'h22e38eb207fe0;
-            638: node_tab = 50'h23249113ebfe0;
-            639: node_tab = 50'h22a3736e9ffe0;
-            640: node_tab = 50'h22e475d3fbfe0;
-            641: node_tab = 50'h22a3782eeffe0;
-            642: node_tab = 50'h22e479140bfe0;
-            643: node_tab = 50'h22e37aef7ffe1;
-            644: node_tab = 50'h2325a03417fe1;
-            645: node_tab = 50'h2364a0cfa3fe0;
-            646: node_tab = 50'h23a6a1142bfe0;
-            647: node_tab = 50'h22a37e6ff7fe0;
-            648: node_tab = 50'h22e480d43bfe0;
-            649: node_tab = 50'h22a382307ffe0;
-            650: node_tab = 50'h22e485544bfe0;
-            651: node_tab = 50'h22e38630f7fe1;
-            652: node_tab = 50'h2325a23457fe1;
-            653: node_tab = 50'h2364a2d123fe0;
-            654: node_tab = 50'h23a6a3146bfe0;
-            655: node_tab = 50'h23221b5253fe1;
-            656: node_tab = 50'h23639412b7fe0;
-            657: node_tab = 50'h23659f13f3fe1;
-            658: node_tab = 50'h23a4a3d483fe0;
-            659: node_tab = 50'h23e7a45433fe0;
-            660: node_tab = 50'h23e6a39493fe0;
-            661: node_tab = 50'h2427a4d4a3fe0;
-            662: node_tab = 50'h24689e94abfe0;
-            663: node_tab = 50'h23e49632bbfe0;
-            664: node_tab = 50'h22e36ced33fe0;
-            665: node_tab = 50'h22e367ed87fe1;
-            666: node_tab = 50'h23246f14c3fe0;
-            667: node_tab = 50'h2365a654d3fe2;
-            668: node_tab = 50'h2426a6f4bbfe0;
-            669: node_tab = 50'h22a374ce6ffe1;
-            670: node_tab = 50'h22e3776f5bfe0;
-            671: node_tab = 50'h2324a754f3fe0;
-            672: node_tab = 50'h22a37f90c3fe0;
-            673: node_tab = 50'h22a37e7047fe0;
-            674: node_tab = 50'h22e4a8150bfe0;
-            675: node_tab = 50'h22a378107ffe0;
-            676: node_tab = 50'h22e38bd14ffe0;
-            677: node_tab = 50'h22e48eb51bfe0;
-            678: node_tab = 50'h2325929517fe0;
-            679: node_tab = 50'h2325a9152bfe1;
-            680: node_tab = 50'h2366a7f533fe0;
-            681: node_tab = 50'h23a6a9d543fe0;
-            682: node_tab = 50'h23e71b954ffe1;
-            683: node_tab = 50'h2467aa94e3fe0;
-            684: node_tab = 50'h232363ecaffe0;
-            685: node_tab = 50'h2364669563fe1;
-            686: node_tab = 50'h23e5ab5373fe0;
-            687: node_tab = 50'h23659cd3affe2;
-            688: node_tab = 50'h2426abf573fe0;
-            689: node_tab = 50'h2325a09407fe0;
-            690: node_tab = 50'h2325a23457fe1;
-            691: node_tab = 50'h23669f158bfe0;
-            692: node_tab = 50'h23a7ac959bfe0;
-            693: node_tab = 50'h23e81bd5a7fe1;
-            694: node_tab = 50'h2468ad5583fe0;
-            695: node_tab = 50'h24269772cbfe0;
-            696: node_tab = 50'h22a3736fcffe0;
-            697: node_tab = 50'h22e48a55c3fe1;
-            698: node_tab = 50'h2365ae530bfe0;
-            699: node_tab = 50'h23a69935d3fe0;
-            700: node_tab = 50'h23e71c15dffe1;
-            701: node_tab = 50'h2467af15bbfe0;
-            702: node_tab = 50'h23236f2e17fe0;
-            703: node_tab = 50'h236572139ffe0;
-            704: node_tab = 50'h23659d75f3fe0;
-            705: node_tab = 50'h23a6afd603fe1;
-            706: node_tab = 50'h2427b0538bfe0;
-            707: node_tab = 50'h23e7a19477fe0;
-            708: node_tab = 50'h24281c561ffe0;
-            709: node_tab = 50'h2468b09623fe0;
-            710: node_tab = 50'h2425a6d4bbfe0;
-            711: node_tab = 50'h22a378107bfe0;
-            712: node_tab = 50'h22e490363bfe0;
-            713: node_tab = 50'h2325a8b643fe0;
-            714: node_tab = 50'h2366a7d64bfe0;
-            715: node_tab = 50'h23a71c9657fe2;
-            716: node_tab = 50'h2467b2d633fe0;
-            717: node_tab = 50'h2426abd573fe0;
-            718: node_tab = 50'h2325a01447fe0;
-            719: node_tab = 50'h2325a09453fe1;
-            720: node_tab = 50'h23669fb673fe0;
-            721: node_tab = 50'h23a6b3d683fe0;
-            722: node_tab = 50'h23e71cd68ffe1;
-            723: node_tab = 50'h2467b4966bfe0;
-            724: node_tab = 50'h23e71d135ffe1;
-            725: node_tab = 50'h2467b512f3fe0;
-            726: node_tab = 50'h23231d5257fe1;
-            727: node_tab = 50'h23639432b3fe0;
-            728: node_tab = 50'h23659f33f7fe1;
-            729: node_tab = 50'h23a4b596bbfe0;
-            730: node_tab = 50'h23e7b61437fe0;
-            731: node_tab = 50'h23e7a3b6cbfe0;
-            732: node_tab = 50'h2428b696dbfe0;
-            733: node_tab = 50'h24689e96e3fe0;
-            734: node_tab = 50'h23e61d954bfe1;
-            735: node_tab = 50'h2467b794e3fe0;
-            736: node_tab = 50'h23e71dd5a3fe1;
-            737: node_tab = 50'h2467b81583fe0;
-            738: node_tab = 50'h23e61e15dbfe1;
-            739: node_tab = 50'h2467b895bbfe0;
-            740: node_tab = 50'h24271e561bfe0;
-            741: node_tab = 50'h2468b09723fe0;
-            742: node_tab = 50'h23a61e9653fe2;
-            743: node_tab = 50'h2467b99633fe0;
-            744: node_tab = 50'h23e61ed68bfe1;
-            745: node_tab = 50'h2467ba166bfe0;
-            default: node_tab = 50'h0;
-        endcase
-    endfunction
-    // mul_tab(m) = {input node[9:0], red level[4:0], W_in[5:0], digits[4:0]}
-    function automatic logic [25:0] mul_tab(input int m);
-        case (m)
-            0: mul_tab = 26'h0264c66;
-            1: mul_tab = 26'h02d4c69;
-            2: mul_tab = 26'h0304446;
-            3: mul_tab = 26'h0334447;
-            4: mul_tab = 26'h0384c66;
-            5: mul_tab = 26'h0393c26;
-            6: mul_tab = 26'h03a3c28;
-            7: mul_tab = 26'h03d4447;
-            8: mul_tab = 26'h03e3c25;
-            9: mul_tab = 26'h03f3c24;
-            10: mul_tab = 26'h0424446;
-            11: mul_tab = 26'h0444445;
-            12: mul_tab = 26'h0474447;
-            13: mul_tab = 26'h04c4c67;
-            14: mul_tab = 26'h0083406;
-            15: mul_tab = 26'h0173407;
-            16: mul_tab = 26'h04d3c25;
-            17: mul_tab = 26'h0163407;
-            18: mul_tab = 26'h0153404;
-            19: mul_tab = 26'h04e3c25;
-            20: mul_tab = 26'h04f3c28;
-            21: mul_tab = 26'h0503c25;
-            22: mul_tab = 26'h0534c46;
-            23: mul_tab = 26'h0143406;
-            24: mul_tab = 26'h0133406;
-            25: mul_tab = 26'h0543c26;
-            26: mul_tab = 26'h0123406;
-            27: mul_tab = 26'h0113408;
-            28: mul_tab = 26'h0553c27;
-            29: mul_tab = 26'h0563c24;
-            30: mul_tab = 26'h0573c27;
-            31: mul_tab = 26'h05a4c47;
-            32: mul_tab = 26'h05b3c26;
-            33: mul_tab = 26'h05c3c27;
-            34: mul_tab = 26'h05f4448;
-            35: mul_tab = 26'h0603c25;
-            36: mul_tab = 26'h0613c27;
-            37: mul_tab = 26'h0624445;
-            38: mul_tab = 26'h0654447;
-            39: mul_tab = 26'h0664447;
-            40: mul_tab = 26'h06b4c67;
-            default: mul_tab = 26'h0;
-        endcase
-    endfunction
-    // out_tab(i) = {node id[9:0], level[4:0], W[5:0]}
-    function automatic logic [20:0] out_tab(input int i);
-        case (i)
-            0: out_tab = 21'h136c67;
-            1: out_tab = 21'h14b468;
-            2: out_tab = 21'h155c67;
-            3: out_tab = 21'h15b468;
-            4: out_tab = 21'h15ec67;
-            5: out_tab = 21'h162c68;
-            6: out_tab = 21'h166467;
-            7: out_tab = 21'h169c67;
-            8: out_tab = 21'h16ac67;
-            9: out_tab = 21'h16ec68;
-            10: out_tab = 21'h16fc67;
-            11: out_tab = 21'h170c67;
-            12: out_tab = 21'h171c67;
-            13: out_tab = 21'h172c68;
-            14: out_tab = 21'h173c67;
-            15: out_tab = 21'h174c67;
-            default: out_tab = 21'h0;
-        endcase
-    endfunction
-    function automatic logic [30:0] OFF(input int i);    // complement offsets of output i (added back in K_i)
-        case (i)
-            0: OFF = 31'h00000042;
-            1: OFF = 31'h000000b8;
-            2: OFF = 31'h0000007e;
-            3: OFF = 31'h000000ed;
-            4: OFF = 31'h0000008e;
-            5: OFF = 31'h000000c2;
-            6: OFF = 31'h00000072;
-            7: OFF = 31'h00000077;
-            8: OFF = 31'h00000067;
-            9: OFF = 31'h00000103;
-            10: OFF = 31'h0000006d;
-            11: OFF = 31'h00000084;
-            12: OFF = 31'h00000061;
-            13: OFF = 31'h000000d1;
-            14: OFF = 31'h0000003f;
-            15: OFF = 31'h00000088;
-            default: OFF = 31'h0;
-        endcase
-    endfunction
+    // NODE_TAB[id*50 +: 50] = {kind[2:0], level[4:0], W[5:0], A[9:0], negA, B[9:0], negB, lend[8:0], life[4:0]} (entry NN-1 first)
+    localparam logic [37299:0] NODE_TAB = {
+        50'h2467ba166bfe0,
+        50'h23e61ed68bfe1,
+        50'h2467b99633fe0,
+        50'h23a61e9653fe2,
+        50'h2468b09723fe0,
+        50'h24271e561bfe0,
+        50'h2467b895bbfe0,
+        50'h23e61e15dbfe1,
+        50'h2467b81583fe0,
+        50'h23e71dd5a3fe1,
+        50'h2467b794e3fe0,
+        50'h23e61d954bfe1,
+        50'h24689e96e3fe0,
+        50'h2428b696dbfe0,
+        50'h23e7a3b6cbfe0,
+        50'h23e7b61437fe0,
+        50'h23a4b596bbfe0,
+        50'h23659f33f7fe1,
+        50'h23639432b3fe0,
+        50'h23231d5257fe1,
+        50'h2467b512f3fe0,
+        50'h23e71d135ffe1,
+        50'h2467b4966bfe0,
+        50'h23e71cd68ffe1,
+        50'h23a6b3d683fe0,
+        50'h23669fb673fe0,
+        50'h2325a09453fe1,
+        50'h2325a01447fe0,
+        50'h2426abd573fe0,
+        50'h2467b2d633fe0,
+        50'h23a71c9657fe2,
+        50'h2366a7d64bfe0,
+        50'h2325a8b643fe0,
+        50'h22e490363bfe0,
+        50'h22a378107bfe0,
+        50'h2425a6d4bbfe0,
+        50'h2468b09623fe0,
+        50'h24281c561ffe0,
+        50'h23e7a19477fe0,
+        50'h2427b0538bfe0,
+        50'h23a6afd603fe1,
+        50'h23659d75f3fe0,
+        50'h236572139ffe0,
+        50'h23236f2e17fe0,
+        50'h2467af15bbfe0,
+        50'h23e71c15dffe1,
+        50'h23a69935d3fe0,
+        50'h2365ae530bfe0,
+        50'h22e48a55c3fe1,
+        50'h22a3736fcffe0,
+        50'h24269772cbfe0,
+        50'h2468ad5583fe0,
+        50'h23e81bd5a7fe1,
+        50'h23a7ac959bfe0,
+        50'h23669f158bfe0,
+        50'h2325a23457fe1,
+        50'h2325a09407fe0,
+        50'h2426abf573fe0,
+        50'h23659cd3affe2,
+        50'h23e5ab5373fe0,
+        50'h2364669563fe1,
+        50'h232363ecaffe0,
+        50'h2467aa94e3fe0,
+        50'h23e71b954ffe1,
+        50'h23a6a9d543fe0,
+        50'h2366a7f533fe0,
+        50'h2325a9152bfe1,
+        50'h2325929517fe0,
+        50'h22e48eb51bfe0,
+        50'h22e38bd14ffe0,
+        50'h22a378107ffe0,
+        50'h22e4a8150bfe0,
+        50'h22a37e7047fe0,
+        50'h22a37f90c3fe0,
+        50'h2324a754f3fe0,
+        50'h22e3776f5bfe0,
+        50'h22a374ce6ffe1,
+        50'h2426a6f4bbfe0,
+        50'h2365a654d3fe2,
+        50'h23246f14c3fe0,
+        50'h22e367ed87fe1,
+        50'h22e36ced33fe0,
+        50'h23e49632bbfe0,
+        50'h24689e94abfe0,
+        50'h2427a4d4a3fe0,
+        50'h23e6a39493fe0,
+        50'h23e7a45433fe0,
+        50'h23a4a3d483fe0,
+        50'h23659f13f3fe1,
+        50'h23639412b7fe0,
+        50'h23221b5253fe1,
+        50'h23a6a3146bfe0,
+        50'h2364a2d123fe0,
+        50'h2325a23457fe1,
+        50'h22e38630f7fe1,
+        50'h22e485544bfe0,
+        50'h22a382307ffe0,
+        50'h22e480d43bfe0,
+        50'h22a37e6ff7fe0,
+        50'h23a6a1142bfe0,
+        50'h2364a0cfa3fe0,
+        50'h2325a03417fe1,
+        50'h22e37aef7ffe1,
+        50'h22e479140bfe0,
+        50'h22a3782eeffe0,
+        50'h22e475d3fbfe0,
+        50'h22a3736e9ffe0,
+        50'h23249113ebfe0,
+        50'h22e38eb207fe0,
+        50'h23248d93dbfe0,
+        50'h22e38a717ffe0,
+        50'h24269e538bfe0,
+        50'h23a59dd3c3fe1,
+        50'h23649d53b3fe0,
+        50'h236472339bfe0,
+        50'h23236f0e13fe0,
+        50'h23246e13a3fe0,
+        50'h22e36ced87fe0,
+        50'h23246b1393fe0,
+        50'h22e367ed37fe0,
+        50'h23e59c1373fe0,
+        50'h236466b37bfe1,
+        50'h232363ccabfe0,
+        50'h23a4608c57fe0,
+        50'h24679b12f3fe0,
+        50'h23e61b135bfe1,
+        50'h23a69a5353fe0,
+        50'h2365991343fe0,
+        50'h236599d30bfe0,
+        50'h2324943333fe0,
+        50'h22e490132bfe1,
+        50'h22e38eb17bfe0,
+        50'h22a3734fcffe0,
+        50'h232498931bfe1,
+        50'h22e383f0f3fe0,
+        50'h22a3820ff7fe1,
+        50'h232497d303fe0,
+        50'h22e374ef7bfe0,
+        50'h22a3782eebfe1,
+        50'h24259752cbfe0,
+        50'h236596d2e3fe2,
+        50'h232470b2d3fe0,
+        50'h22e36c2d33fe1,
+        50'h22e36cccfbfe0,
+        50'h23e49612bbfe0,
+        50'h232363ccaffe2,
+        50'h23a3608c53fe0,
+        50'h1b229512abfe0,
+        50'h1ae194cbebfe0,
+        50'h1ae1945293fe0,
+        50'h1aa05ecbe1180,
+        50'h1aa05e4bd1160,
+        50'h1aa05dcbc1140,
+        50'h1ae293927bfe1,
+        50'h1aa1934bb3fe0,
+        50'h1aa192d263fe0,
+        50'h1a605d0ba9120,
+        50'h1a605c8b99100,
+        50'h1a605c0b890e0,
+        50'h1ae292124bfe0,
+        50'h1aa191cb7bfe0,
+        50'h1aa1915233fe0,
+        50'h1a605b4b710c0,
+        50'h1a605acb610a0,
+        50'h1a605a4b51080,
+        50'h1ae290cb43fe0,
+        50'h1aa1905213fe0,
+        50'h1a60598b39060,
+        50'h1a60590b29040,
+        50'h1aa28f91fbfe0,
+        50'h1a618f4b1bfe0,
+        50'h1a618ed1e3fe0,
+        50'h1a20584b11020,
+        50'h1a2057cb01000,
+        50'h1a20574af0fe0,
+        50'h1aa28e4ae3fe0,
+        50'h1a618dd1c3fe0,
+        50'h1a20568ad8fc0,
+        50'h1a20560ac8fa0,
+        50'h1ae28d11abfe0,
+        50'h1aa18c919bfe0,
+        50'h1aa18c118bfe0,
+        50'h1a60558ab8f80,
+        50'h1a60550aa8f60,
+        50'h1a60548a98f40,
+        50'h1a60540a88f20,
+        50'h1aa28b5173fe0,
+        50'h1a618b0a7bfe0,
+        50'h1a618a915bfe0,
+        50'h1a20534a70f00,
+        50'h1a2052ca60ee0,
+        50'h1a20524a50ec0,
+        50'h1aa28a113bfe0,
+        50'h1a61895133fe0,
+        50'h1a2051ca40ea1,
+        50'h1a20514a30e80,
+        50'h1a2050ca20e60,
+        50'h1b2288911bfe0,
+        50'h1ae1884a13fe0,
+        50'h1ae187d103fe0,
+        50'h1aa0500a08e40,
+        50'h1aa04f89f8e20,
+        50'h1aa04f09e8e00,
+        50'h1aa28710ebfe0,
+        50'h1a6186c9dbfe0,
+        50'h1a618650d3fe0,
+        50'h1a204e49d0de0,
+        50'h1a204dc9c0dc0,
+        50'h1a204d49b0da0,
+        50'h1a618590bbfe1,
+        50'h1a204cc9a0d80,
+        50'h1a204c4990d60,
+        50'h1aa284d0a3fe0,
+        50'h1a61848983fe0,
+        50'h1a6184108bfe0,
+        50'h1a204b8978d40,
+        50'h1a204b0968d20,
+        50'h1a204a8958d00,
+        50'h1a62835073fe1,
+        50'h1a2182d063fe0,
+        50'h1a21825053fe0,
+        50'h19e04a0948ce0,
+        50'h19e0498938cc0,
+        50'h19e0490928ca0,
+        50'h19e0488918c80,
+        50'h1a6281d033fe0,
+        50'h1a2181102bfe0,
+        50'h19e0480908c61,
+        50'h19e04788f8c40,
+        50'h19e04708e8c20,
+        50'h1aa280900bfe0,
+        50'h1a617fd003fe0,
+        50'h1a204688d8c01,
+        50'h1a204608c8be0,
+        50'h1a204588b8bc0,
+        50'h1a627f4fe3fe0,
+        50'h1a217e8fdbfe0,
+        50'h19e04508a8ba1,
+        50'h19e0448898b80,
+        50'h19e0440888b60,
+        50'h1a627e0fbbfe0,
+        50'h1a217d4fb3fe0,
+        50'h19e0438878b41,
+        50'h19e0430868b20,
+        50'h19e0428858b00,
+        50'h1b227ccf93fe0,
+        50'h1ae17c0f8bfe0,
+        50'h1aa0420848ae1,
+        50'h1aa0418838ac0,
+        50'h1aa0410828aa0,
+        50'h1aa27b881bfe0,
+        50'h1a617b0f6bfe0,
+        50'h1a20404810a80,
+        50'h1a203fc800a60,
+        50'h1aa27a4f53fe0,
+        50'h1a6179cf43fe0,
+        50'h1a61794f33fe0,
+        50'h1a203f47f0a40,
+        50'h1a203ec7e0a20,
+        50'h1a203e47d0a00,
+        50'h1a203dc7c09e0,
+        50'h1aa278c7b3fe0,
+        50'h1a61784f11ae0,
+        50'h1a203d07a89c0,
+        50'h1a203c87989a0,
+        50'h1a21778ef9ac1,
+        50'h19e03c0788980,
+        50'h19e03b8778960,
+        50'h1a6276cee3fe1,
+        50'h1a21768769aa0,
+        50'h1a21760ec9a80,
+        50'h19e03ac760940,
+        50'h19e03a4750920,
+        50'h19e039c740900,
+        50'h1aa2758733fe0,
+        50'h1a61750ea9a60,
+        50'h1a203907288e0,
+        50'h1a203887188c0,
+        50'h1a62744e93fe1,
+        50'h1a21740709a40,
+        50'h1a21738e79a20,
+        50'h19e037c7008a0,
+        50'h19e03746f0880,
+        50'h19e036c6e0860,
+        50'h1a62730e5bfe0,
+        50'h1a21724e51a00,
+        50'h19e03646d0841,
+        50'h19e035c6c0820,
+        50'h19e03546b0800,
+        50'h1b22718e3bfe0,
+        50'h1ae17146a19e0,
+        50'h1ae170ce219c0,
+        50'h1aa03486987e0,
+        50'h1aa03406887c0,
+        50'h1aa03386787a0,
+        50'h1ae2700e0bfe0,
+        50'h1aa16fc6699a0,
+        50'h1aa16f4df1980,
+        50'h1a6032c660780,
+        50'h1a60324650760,
+        50'h1a6031c640740,
+        50'h1ae26ec633fe0,
+        50'h1aa16e4dd1960,
+        50'h1a60310628720,
+        50'h1a60308618700,
+        50'h1ae26dcdb3fe0,
+        50'h1aa16d0da9940,
+        50'h1a603006086e1,
+        50'h1a602f85f86c0,
+        50'h1a602f05e86a0,
+        50'h1a616c4d91921,
+        50'h1a202e85d8680,
+        50'h1a202e05c8660,
+        50'h1aa26bc5bbfe0,
+        50'h1a616b4d71900,
+        50'h1a202d45b0640,
+        50'h1a202cc5a0620,
+        50'h1ae26a8d5bfe0,
+        50'h1aa16a45918e0,
+        50'h1aa169cd418c0,
+        50'h1a602c0588600,
+        50'h1a602b85785e0,
+        50'h1a602b05685c0,
+        50'h1aa2690d2bfe0,
+        50'h1a61688d198a0,
+        50'h1a61680d09880,
+        50'h1a202a85585a0,
+        50'h1a202a0548580,
+        50'h1a20298538560,
+        50'h1a20290528540,
+        50'h1aa2678cebfe0,
+        50'h1a6166cce1860,
+        50'h1a20288518521,
+        50'h1a20280508500,
+        50'h1a202784f84e0,
+        50'h1b22664cc3fe0,
+        50'h1ae1658cb9840,
+        50'h1aa02704e84c1,
+        50'h1aa02684d84a0,
+        50'h1aa02604c8480,
+        50'h1ae264cca3fe0,
+        50'h1aa16484b9820,
+        50'h1aa1640c89800,
+        50'h1a602544b0460,
+        50'h1a6024c4a0440,
+        50'h1a60244490420,
+        50'h1ae2638c6bfe0,
+        50'h1aa162cc617e0,
+        50'h1a6023c480401,
+        50'h1a602344703e0,
+        50'h1a6022c4603c0,
+        50'h1b63624453fe0,
+        50'h1b2261cc43fe0,
+        50'h1ae1614c317c0,
+        50'h1ae160cc217a0,
+        50'h1aa02204483a0,
+        50'h1aa0218438380,
+        50'h1aa0210428360,
+        50'h1aa0208418340,
+        50'h1b22604c03fe1,
+        50'h1ae15f8bf9780,
+        50'h1aa0200408321,
+        50'h1aa01f83f8300,
+        50'h1aa01f03e82e0,
+        50'h125f0a00f3fe1,
+        50'h125f0a007bfe0,
+        50'h125f0a206bfe0,
+        50'h125f0a004bfe0,
+        50'h125f0a0033fe0,
+        50'h125f0a2013fe0,
+        50'h125f0a0003fe0,
+        50'h121f09c0f3fe1,
+        50'h121f09c07bfe0,
+        50'h121f09e063fe0,
+        50'h121f09e053fe0,
+        50'h121f09c043fe0,
+        50'h121f09e02bfe0,
+        50'h121f09c003fe0,
+        50'h121f098003fe1,
+        50'h121f09a05bfe0,
+        50'h121f09a04bfe0,
+        50'h121f09a03bfe0,
+        50'h121f09a02bfe0,
+        50'h121f09a013fe0,
+        50'h121f09a003fe0,
+        50'h121f094073fe2,
+        50'h121f09605bfe0,
+        50'h121f09603bfe0,
+        50'h121f096023fe0,
+        50'h121f094013fe0,
+        50'h11df090073fe1,
+        50'h11df090063fe0,
+        50'h11df090053fe0,
+        50'h11df092033fe0,
+        50'h11df092023fe0,
+        50'h11df090013fe0,
+        50'h11df090003fe0,
+        50'h11df08c003fe2,
+        50'h11df08e06bfe0,
+        50'h11df08c053fe0,
+        50'h11df08e033fe0,
+        50'h11df08e00bfe0,
+        50'h121f0880f3fe0,
+        50'h121f088073fe0,
+        50'h121f08a063fe0,
+        50'h121f08a053fe0,
+        50'h121f08a043fe0,
+        50'h121f08a033fe0,
+        50'h121f08801bfe0,
+        50'h121f088003fe0,
+        50'h11df0840f3fe1,
+        50'h11df08406bfe0,
+        50'h11df08605bfe0,
+        50'h11df084043fe0,
+        50'h11df084033fe0,
+        50'h11df086023fe0,
+        50'h11df086013fe0,
+        50'h11df080063fe0,
+        50'h11df08004bfe0,
+        50'h11df08203bfe0,
+        50'h11df08002bfe0,
+        50'h11df082013fe0,
+        50'h11df080003fe0,
+        50'h125f07c0f3fe1,
+        50'h125f07c07bfe0,
+        50'h125f07e06bfe0,
+        50'h125f07c053fe0,
+        50'h125f07e043fe0,
+        50'h125f07e023fe0,
+        50'h125f07c003fe0,
+        50'h11df0780f3fe1,
+        50'h11df078073fe0,
+        50'h11df07804bfe0,
+        50'h11df07a03bfe0,
+        50'h11df07a02bfe0,
+        50'h11df07801bfe0,
+        50'h11df078003fe0,
+        50'h11df07406bfe0,
+        50'h11df07404bfe0,
+        50'h11df07603bfe0,
+        50'h11df07401bfe0,
+        50'h11df070073fe1,
+        50'h11df070063fe0,
+        50'h11df072053fe0,
+        50'h11df070033fe0,
+        50'h11df072023fe0,
+        50'h11df070013fe0,
+        50'h11df072003fe0,
+        50'h119f06c0f3fe0,
+        50'h119f06c073fe0,
+        50'h119f06e063fe0,
+        50'h119f06c053fe0,
+        50'h119f06e03bfe0,
+        50'h119f06c02bfe0,
+        50'h119f06e01bfe0,
+        50'h119f06e00bfe0,
+        50'h119f0680f3fe0,
+        50'h119f06806bfe0,
+        50'h119f06a05bfe0,
+        50'h119f06803bfe0,
+        50'h119f06802bfe0,
+        50'h119f06a013fe0,
+        50'h11df0640f3fe0,
+        50'h11df06406bfe0,
+        50'h11df06605bfe0,
+        50'h11df066043fe0,
+        50'h11df066033fe0,
+        50'h11df06600bfe0,
+        50'h119f060063fe0,
+        50'h119f06204bfe0,
+        50'h119f062033fe0,
+        50'h119f060023fe0,
+        50'h119f060013fe0,
+        50'h119f062003fe0,
+        50'h119f05c0f3fe0,
+        50'h119f05c05bfe0,
+        50'h119f05c043fe0,
+        50'h119f05e023fe0,
+        50'h119f05e013fe0,
+        50'h119f05e003fe0,
+        50'h125f058003fe0,
+        50'h125f05a043fe0,
+        50'h125f058033fe0,
+        50'h125f058023fe0,
+        50'h125f05a013fe0,
+        50'h125f05a003fe0,
+        50'h11df054073fe2,
+        50'h11df056063fe0,
+        50'h11df056053fe0,
+        50'h11df05603bfe0,
+        50'h11df05601bfe0,
+        50'h11df050003fe0,
+        50'h11df052073fe0,
+        50'h11df050063fe0,
+        50'h11df050053fe0,
+        50'h11df052033fe0,
+        50'h11df050023fe0,
+        50'h11df050013fe0,
+        50'h11df052003fe0,
+        50'h11df04c003fe2,
+        50'h11df04e063fe0,
+        50'h11df04e053fe0,
+        50'h11df04e043fe0,
+        50'h11df04c033fe0,
+        50'h119f0480f3fe0,
+        50'h119f04806bfe0,
+        50'h119f04802bfe0,
+        50'h119f04a00bfe0,
+        50'h119f0440f3fe1,
+        50'h119f046073fe0,
+        50'h119f044063fe0,
+        50'h119f046053fe0,
+        50'h119f046043fe0,
+        50'h119f04402bfe0,
+        50'h119f04400bfe0,
+        50'h11df040063fe2,
+        50'h11df040053fe0,
+        50'h11df040023fe0,
+        50'h11df042013fe0,
+        50'h11df042003fe0,
+        50'h119f03c0f3fe1,
+        50'h119f03c063fe0,
+        50'h119f03e053fe0,
+        50'h119f03e03bfe0,
+        50'h119f03e02bfe0,
+        50'h119f03e01bfe0,
+        50'h119f03c003fe0,
+        50'h119f0380f3fe0,
+        50'h119f03805bfe0,
+        50'h119f038043fe0,
+        50'h119f03a033fe0,
+        50'h119f03a023fe0,
+        50'h119f038003fe0,
+        50'h125f034003fe1,
+        50'h125f0360ebfe0,
+        50'h125f03407bfe0,
+        50'h125f03405bfe0,
+        50'h125f03603bfe0,
+        50'h125f03402bfe0,
+        50'h125f034013fe0,
+        50'h121f030003fe1,
+        50'h121f0320ebfe0,
+        50'h121f03006bfe0,
+        50'h121f032053fe0,
+        50'h121f030043fe0,
+        50'h121f032033fe0,
+        50'h121f030013fe0,
+        50'h121f02c07bfe2,
+        50'h121f02e063fe0,
+        50'h121f02e053fe0,
+        50'h121f02e043fe0,
+        50'h121f02e02bfe0,
+        50'h121f0280f3fe0,
+        50'h121f028073fe0,
+        50'h121f028063fe0,
+        50'h121f028053fe0,
+        50'h121f02a043fe0,
+        50'h121f02a02bfe0,
+        50'h11df024073fe0,
+        50'h11df02405bfe0,
+        50'h11df02403bfe0,
+        50'h11df024023fe0,
+        50'h11df0200f3fe2,
+        50'h11df02005bfe0,
+        50'h11df02004bfe0,
+        50'h11df020033fe0,
+        50'h11df020023fe0,
+        50'h121f01c0ebfe1,
+        50'h121f01c073fe0,
+        50'h121f01e063fe0,
+        50'h121f01c053fe0,
+        50'h121f01c043fe0,
+        50'h121f01e033fe0,
+        50'h121f01c013fe0,
+        50'h11df018003fe0,
+        50'h11df01a0ebfe0,
+        50'h11df01a073fe0,
+        50'h11df018063fe0,
+        50'h11df018053fe0,
+        50'h11df018033fe0,
+        50'h11df01a023fe0,
+        50'h11df018013fe0,
+        50'h11df0140f3fe0,
+        50'h11df01407bfe0,
+        50'h11df01606bfe0,
+        50'h11df01403bfe0,
+        50'h11df014023fe0,
+        50'h11df016003fe0,
+        50'h125f0100e3fe0,
+        50'h125f012063fe0,
+        50'h125f012053fe0,
+        50'h125f01003bfe0,
+        50'h125f010013fe0,
+        50'h125f010003fe0,
+        50'h121f00c0e3fe1,
+        50'h121f00e063fe0,
+        50'h121f00c053fe0,
+        50'h121f00e043fe0,
+        50'h121f00e02bfe0,
+        50'h121f00e01bfe0,
+        50'h121f00e00bfe0,
+        50'h121f008003fe0,
+        50'h121f00a05bfe0,
+        50'h121f00804bfe0,
+        50'h121f00a033fe0,
+        50'h121f00a023fe0,
+        50'h121f00a00bfe0,
+        50'h125f004003fe3,
+        50'h125f0060ebfe0,
+        50'h125f0060dbfe0,
+        50'h125f004063fe0,
+        50'h125f006053fe0,
+        50'h125f004043fe0,
+        50'h125f006033fe0,
+        50'h125f004023fe0,
+        50'h125f006013fe0,
+        50'h125f0000ebfe0,
+        50'h125f0000dbfe0,
+        50'h125f00007bfe0,
+        50'h125f00002bfe0,
+        50'h125f002013fe0,
+        50'h125f000003fe0,
+        50'h295f03c003fe0,
+        50'h295f038003fe0,
+        50'h295f034003fe0,
+        50'h295f030003fe0,
+        50'h295f02c003fe0,
+        50'h295f028003fe0,
+        50'h295f024003fe0,
+        50'h295f020003fe0,
+        50'h295f01c003fe0,
+        50'h295f018003fe0,
+        50'h295f014003fe0,
+        50'h295f010003fe0,
+        50'h295f00c003fe0,
+        50'h295f008003fe0,
+        50'h295f004003fe0,
+        50'h295f000003fe0,
+        50'h0a231a0353fe0,
+        50'h09e21a428bfe0,
+        50'h09a10500a9760,
+        50'h09e219c2c3fe0,
+        50'h09a1020089740,
+        50'h09e215c283fe0,
+        50'h09e218c323fe0,
+        50'h09a10500b1720,
+        50'h09a1020091700,
+        50'h09e2154273fe0,
+        50'h09a10440a96e0,
+        50'h09a10480b16c0,
+        50'h09e21742f3fe0,
+        50'h09a10500b96a0,
+        50'h09a1020099680,
+        50'h09a104c0b9660,
+        50'h09a10200a1640,
+        50'h0a221640a3fe0,
+        50'h09e20442c3fe0,
+        50'h09a1048099620,
+        50'h09a1044099600,
+        50'h09a10480a15e0,
+        50'h09a10440915c0,
+        50'h09a104c0a15a0,
+        50'h0a22020293fe0,
+        50'h09e205428bfe0,
+        50'h09a10580b9580,
+        50'h09a10540b9560,
+        50'h09a10200b1540,
+        50'h09a10540b1520,
+        50'h09a10200b9500,
+        50'h0a2312425bfe0,
+        50'h09e2128123fe0,
+        50'h09a10700294e0,
+        50'h09e209c243fe0,
+        50'h09a10680d94c0,
+        50'h09e2114233fe0,
+        50'h09a10140394a0,
+        50'h09a10640d9480,
+        50'h09e20b821bfe0,
+        50'h09a1070031460,
+        50'h09e210020bfe0,
+        50'h09a1014031440,
+        50'h09a10640d1420,
+        50'h09a1064029400,
+        50'h09a10680313e0,
+        50'h09e20ec1e3fe0,
+        50'h09a10700393c0,
+        50'h09a10000d93a0,
+        50'h09a106c039380,
+        50'h09a10000e1360,
+        50'h0a230d41bbfe0,
+        50'h09e20a81b3fe0,
+        50'h09a1078039340,
+        50'h09e209c1a3fe0,
+        50'h09a1068019320,
+        50'h09e20c4193fe0,
+        50'h09a1074039300,
+        50'h09a10640192e0,
+        50'h09e20b817bfe0,
+        50'h09a10100f12c0,
+        50'h09a10000d12a0,
+        50'h0a230a4163fe0,
+        50'h09e20a815bfe0,
+        50'h09a10180f9280,
+        50'h09a10100e9260,
+        50'h09e209c143fe0,
+        50'h09a10080d9240,
+        50'h09a10000c9220,
+        50'h0a2308812bfe0,
+        50'h09e208c123fe0,
+        50'h09a1018039200,
+        50'h09a10100291e0,
+        50'h09e208010bfe0,
+        50'h09a10080191c0,
+        50'h09a10000091a0,
+        50'h016007c0002c0,
+        50'h01600780002a0,
+        50'h0160074000280,
+        50'h0160070000260,
+        50'h016006c000240,
+        50'h0160068000220,
+        50'h0160064000200,
+        50'h0000000000000,
+        50'h016005c0001e0,
+        50'h01600580001c0,
+        50'h01600540001a1,
+        50'h0160050000182,
+        50'h016004c000160,
+        50'h0160048000140,
+        50'h0160044000121,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0000000000000,
+        50'h0160020000102,
+        50'h016001c0000e0,
+        50'h01600180000c0,
+        50'h01600140000a0,
+        50'h0160010000080,
+        50'h016000c000060,
+        50'h0160008000040,
+        50'h0160004000020,
+        50'h0160000000000
+    };
+    // MUL_TAB[m*26 +: 26] = {input node[9:0], red level[4:0], W_in[5:0], digits[4:0]}
+    localparam logic [1065:0] MUL_TAB = {
+        26'h06b4c67,
+        26'h0664447,
+        26'h0654447,
+        26'h0624445,
+        26'h0613c27,
+        26'h0603c25,
+        26'h05f4448,
+        26'h05c3c27,
+        26'h05b3c26,
+        26'h05a4c47,
+        26'h0573c27,
+        26'h0563c24,
+        26'h0553c27,
+        26'h0113408,
+        26'h0123406,
+        26'h0543c26,
+        26'h0133406,
+        26'h0143406,
+        26'h0534c46,
+        26'h0503c25,
+        26'h04f3c28,
+        26'h04e3c25,
+        26'h0153404,
+        26'h0163407,
+        26'h04d3c25,
+        26'h0173407,
+        26'h0083406,
+        26'h04c4c67,
+        26'h0474447,
+        26'h0444445,
+        26'h0424446,
+        26'h03f3c24,
+        26'h03e3c25,
+        26'h03d4447,
+        26'h03a3c28,
+        26'h0393c26,
+        26'h0384c66,
+        26'h0334447,
+        26'h0304446,
+        26'h02d4c69,
+        26'h0264c66
+    };
+    // OUT_TAB[i*21 +: 21] = {node id[9:0], level[4:0], W[5:0]}
+    localparam logic [335:0] OUT_TAB = {
+        21'h174c67,
+        21'h173c67,
+        21'h172c68,
+        21'h171c67,
+        21'h170c67,
+        21'h16fc67,
+        21'h16ec68,
+        21'h16ac67,
+        21'h169c67,
+        21'h166467,
+        21'h162c68,
+        21'h15ec67,
+        21'h15b468,
+        21'h155c67,
+        21'h14b468,
+        21'h136c67
+    };
+    // OFF_TAB[i*31 +: 31] = complement offset of output i (added back in K_i)
+    localparam logic [495:0] OFF_TAB = {
+        31'h00000088,
+        31'h0000003f,
+        31'h000000d1,
+        31'h00000061,
+        31'h00000084,
+        31'h0000006d,
+        31'h00000103,
+        31'h00000067,
+        31'h00000077,
+        31'h00000072,
+        31'h000000c2,
+        31'h0000008e,
+        31'h000000ed,
+        31'h0000007e,
+        31'h000000b8,
+        31'h00000042
+    };
+    // RC_TAB[(r*16+i)*31 +: 31] = round constant i of round r (0..4)
+    localparam logic [2479:0] RC_TAB = {
+        31'h42372f45,
+        31'h4fd16101,
+        31'h02dee437,
+        31'h2fa873d0,
+        31'h5441fa11,
+        31'h3f138de3,
+        31'h4985b4fd,
+        31'h141dc716,
+        31'h4db0403a,
+        31'h1584389a,
+        31'h4738677f,
+        31'h6f5b4896,
+        31'h1e74c8c5,
+        31'h5f44064b,
+        31'h76e719ed,
+        31'h1fe21035,
+        31'h6f36eff3,
+        31'h4aca8f2e,
+        31'h3c562a5c,
+        31'h67abd856,
+        31'h369cc105,
+        31'h2d262d0a,
+        31'h68706e51,
+        31'h5c33806c,
+        31'h3d175171,
+        31'h24893eb2,
+        31'h53a8ff1e,
+        31'h4b9cf923,
+        31'h0caa81bf,
+        31'h4be9c141,
+        31'h4aa58253,
+        31'h724dc1f9,
+        31'h68aa622d,
+        31'h65584d01,
+        31'h0e644935,
+        31'h465af76d,
+        31'h0bbf3f2c,
+        31'h24c3ebda,
+        31'h65c69913,
+        31'h366e5c49,
+        31'h1f886887,
+        31'h6aa64557,
+        31'h74828a97,
+        31'h4e98962a,
+        31'h41a52825,
+        31'h173e09e7,
+        31'h23a29605,
+        31'h35778631,
+        31'h02fb1e41,
+        31'h17b576d8,
+        31'h08d45359,
+        31'h3c97cc8e,
+        31'h316e341b,
+        31'h1cc7e6b9,
+        31'h2a2ce224,
+        31'h7b8d385f,
+        31'h200bce3b,
+        31'h5531244d,
+        31'h7c6d25ca,
+        31'h136e2ee2,
+        31'h26524ae0,
+        31'h08624421,
+        31'h20bbface,
+        31'h1c46a94c,
+        31'h2ad9c57e,
+        31'h6d1012dc,
+        31'h1aaa334f,
+        31'h7a4c68ae,
+        31'h4fa77b75,
+        31'h3b5d6dfb,
+        31'h65ee092f,
+        31'h5bac69ca,
+        31'h0196224e,
+        31'h676dc2ac,
+        31'h285f40b2,
+        31'h03deae45,
+        31'h3b4d56cd,
+        31'h7c0b1f93,
+        31'h14cb3ccb,
+        31'h3d98fe90
+    };
+    // KC_TAB[(r*16+i)*31 +: 31] = K_i of traversal r (0..5): RC[r-1][i] - OFF(i) mod p (RC = 0 for r = 0)
+    localparam logic [2975:0] KC_TAB = {
+        31'h42372ebd,
+        31'h4fd160c2,
+        31'h02dee366,
+        31'h2fa8736f,
+        31'h5441f98d,
+        31'h3f138d76,
+        31'h4985b3fa,
+        31'h141dc6af,
+        31'h4db03fc3,
+        31'h15843828,
+        31'h473866bd,
+        31'h6f5b4808,
+        31'h1e74c7d8,
+        31'h5f4405cd,
+        31'h76e71935,
+        31'h1fe20ff3,
+        31'h6f36ef6b,
+        31'h4aca8eef,
+        31'h3c56298b,
+        31'h67abd7f5,
+        31'h369cc081,
+        31'h2d262c9d,
+        31'h68706d4e,
+        31'h5c338005,
+        31'h3d1750fa,
+        31'h24893e40,
+        31'h53a8fe5c,
+        31'h4b9cf895,
+        31'h0caa80d2,
+        31'h4be9c0c3,
+        31'h4aa5819b,
+        31'h724dc1b7,
+        31'h68aa61a5,
+        31'h65584cc2,
+        31'h0e644864,
+        31'h465af70c,
+        31'h0bbf3ea8,
+        31'h24c3eb6d,
+        31'h65c69810,
+        31'h366e5be2,
+        31'h1f886810,
+        31'h6aa644e5,
+        31'h748289d5,
+        31'h4e98959c,
+        31'h41a52738,
+        31'h173e0969,
+        31'h23a2954d,
+        31'h357785ef,
+        31'h02fb1db9,
+        31'h17b57699,
+        31'h08d45288,
+        31'h3c97cc2d,
+        31'h316e3397,
+        31'h1cc7e64c,
+        31'h2a2ce121,
+        31'h7b8d37f8,
+        31'h200bcdc4,
+        31'h553123db,
+        31'h7c6d2508,
+        31'h136e2e54,
+        31'h265249f3,
+        31'h086243a3,
+        31'h20bbfa16,
+        31'h1c46a90a,
+        31'h2ad9c4f6,
+        31'h6d10129d,
+        31'h1aaa327e,
+        31'h7a4c684d,
+        31'h4fa77af1,
+        31'h3b5d6d8e,
+        31'h65ee082c,
+        31'h5bac6963,
+        31'h019621d7,
+        31'h676dc23a,
+        31'h285f3ff0,
+        31'h03deadb7,
+        31'h3b4d55e0,
+        31'h7c0b1f15,
+        31'h14cb3c13,
+        31'h3d98fe4e,
+        31'h7fffff77,
+        31'h7fffffc0,
+        31'h7fffff2e,
+        31'h7fffff9e,
+        31'h7fffff7b,
+        31'h7fffff92,
+        31'h7ffffefc,
+        31'h7fffff98,
+        31'h7fffff88,
+        31'h7fffff8d,
+        31'h7fffff3d,
+        31'h7fffff71,
+        31'h7fffff12,
+        31'h7fffff81,
+        31'h7fffff47,
+        31'h7fffffbd
+    };
     localparam int LB = 5;   localparam int NLEAF0 = 124;
-    function automatic logic [30:0] RC(input int r, input int i);   // round constant i of round r (0..4)
-        case (r * 16 + i)
-            0: RC = 31'h3d98fe90;  1: RC = 31'h14cb3ccb;  2: RC = 31'h7c0b1f93;  3: RC = 31'h3b4d56cd;
-            4: RC = 31'h03deae45;  5: RC = 31'h285f40b2;  6: RC = 31'h676dc2ac;  7: RC = 31'h0196224e;
-            8: RC = 31'h5bac69ca;  9: RC = 31'h65ee092f; 10: RC = 31'h3b5d6dfb; 11: RC = 31'h4fa77b75;
-           12: RC = 31'h7a4c68ae; 13: RC = 31'h1aaa334f; 14: RC = 31'h6d1012dc; 15: RC = 31'h2ad9c57e;
-           16: RC = 31'h1c46a94c; 17: RC = 31'h20bbface; 18: RC = 31'h08624421; 19: RC = 31'h26524ae0;
-           20: RC = 31'h136e2ee2; 21: RC = 31'h7c6d25ca; 22: RC = 31'h5531244d; 23: RC = 31'h200bce3b;
-           24: RC = 31'h7b8d385f; 25: RC = 31'h2a2ce224; 26: RC = 31'h1cc7e6b9; 27: RC = 31'h316e341b;
-           28: RC = 31'h3c97cc8e; 29: RC = 31'h08d45359; 30: RC = 31'h17b576d8; 31: RC = 31'h02fb1e41;
-           32: RC = 31'h35778631; 33: RC = 31'h23a29605; 34: RC = 31'h173e09e7; 35: RC = 31'h41a52825;
-           36: RC = 31'h4e98962a; 37: RC = 31'h74828a97; 38: RC = 31'h6aa64557; 39: RC = 31'h1f886887;
-           40: RC = 31'h366e5c49; 41: RC = 31'h65c69913; 42: RC = 31'h24c3ebda; 43: RC = 31'h0bbf3f2c;
-           44: RC = 31'h465af76d; 45: RC = 31'h0e644935; 46: RC = 31'h65584d01; 47: RC = 31'h68aa622d;
-           48: RC = 31'h724dc1f9; 49: RC = 31'h4aa58253; 50: RC = 31'h4be9c141; 51: RC = 31'h0caa81bf;
-           52: RC = 31'h4b9cf923; 53: RC = 31'h53a8ff1e; 54: RC = 31'h24893eb2; 55: RC = 31'h3d175171;
-           56: RC = 31'h5c33806c; 57: RC = 31'h68706e51; 58: RC = 31'h2d262d0a; 59: RC = 31'h369cc105;
-           60: RC = 31'h67abd856; 61: RC = 31'h3c562a5c; 62: RC = 31'h4aca8f2e; 63: RC = 31'h6f36eff3;
-           64: RC = 31'h1fe21035; 65: RC = 31'h76e719ed; 66: RC = 31'h5f44064b; 67: RC = 31'h1e74c8c5;
-           68: RC = 31'h6f5b4896; 69: RC = 31'h4738677f; 70: RC = 31'h1584389a; 71: RC = 31'h4db0403a;
-           72: RC = 31'h141dc716; 73: RC = 31'h4985b4fd; 74: RC = 31'h3f138de3; 75: RC = 31'h5441fa11;
-           76: RC = 31'h2fa873d0; 77: RC = 31'h02dee437; 78: RC = 31'h4fd16101; 79: RC = 31'h42372f45;
-           default: RC = 31'd0;
-        endcase
-    endfunction
-    function automatic logic [30:0] KC(input int r, input int i);   // K_i of traversal r: RC[r-1][i] - OFF(i) (mod p)
-        longint v;
-        v = ((r >= 1 && r <= 5) ? longint'(RC(r - 1, i)) : 64'd0) + longint'(P) - longint'(OFF(i));
-        if (v >= longint'(P)) v = v - longint'(P);
-        KC = 31'(v);
-    endfunction
 endpackage

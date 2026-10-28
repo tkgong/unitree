@@ -7,7 +7,7 @@
 //   L4 Bricks b_i = x_i + lo31 + hi31 of the square, folded to <= p
 //   L5-L18 the Concrete as the Plonky3 Karatsuba conv16 (kara_pkg: bank at L5, pre-adds, 41 reductions + CSD trees,
 //          post-adds), output folds; one adder per level, every value registered at its level.
-// NL > 0: the adders with lend index < NL (kara_pkg node_tab, 32-bit adders first) are alu_lend: while no Monolith
+// NL > 0: the adders with lend index < NL (kara_pkg NODE_TAB, 32-bit adders first) are alu_lend: while no Monolith
 // state is at their level they add ea + eb for the ARX blocks (ey, the same cycle). NL = 0: all adders private (the
 // natural Monolith unit).
 module mono_dp18 #(
@@ -99,7 +99,7 @@ module mono_dp18 #(
         end
         // ---- the 41 reductions ----
         for (genvar m = 0; m < 41; m++) begin : g_mul
-            localparam logic [25:0] MT = kara_pkg::mul_tab(m);
+            localparam logic [25:0] MT = kara_pkg::MUL_TAB[m*26 +: 26];
             localparam int IN = MT[25:16];
             localparam int WI = MT[10:5];
             logic [31:0] t1;
@@ -113,7 +113,7 @@ module mono_dp18 #(
         end
         // ---- the nodes ----
         for (genvar id = 0; id < NN; id++) begin : g_node
-            localparam logic [49:0] T  = kara_pkg::node_tab(id);
+            localparam logic [49:0] T  = kara_pkg::NODE_TAB[id*50 +: 50];
             localparam int KD = T[49:47];
             localparam int LV = T[46:42];
             localparam int W  = T[41:36];
@@ -144,11 +144,13 @@ module mono_dp18 #(
                     assign vd3[id*VW +: VW] = {10'd0, q3};
                 end
             end else begin : g_add                           // bank / pre / tree / post adder, registered at level LV
-                localparam int DA = (KD == 0) ? 0 : LV - int'(kara_pkg::node_tab(A) >> 42 & 5'h1F) - 1;
-                localparam int DB = (KD == 0) ? 0 : LV - int'(kara_pkg::node_tab(B) >> 42 & 5'h1F) - 1;
-                localparam int WA = (KD == 0) ? 31 : int'(kara_pkg::node_tab(A) >> 36 & 6'h3F);
-                localparam int WB = (KD == 0) ? 31 : int'(kara_pkg::node_tab(B) >> 36 & 6'h3F);
-                localparam int KA = (KD == 0) ? 0 : int'(kara_pkg::node_tab(A) >> 47 & 3'h7);
+                localparam logic [49:0] TA = kara_pkg::NODE_TAB[A*50 +: 50];   // operand node entries
+                localparam logic [49:0] TB = kara_pkg::NODE_TAB[B*50 +: 50];
+                localparam int DA = (KD == 0) ? 0 : LV - int'(TA[46:42]) - 1;
+                localparam int DB = (KD == 0) ? 0 : LV - int'(TB[46:42]) - 1;
+                localparam int WA = (KD == 0) ? 31 : int'(TA[41:36]);
+                localparam int WB = (KD == 0) ? 31 : int'(TB[41:36]);
+                localparam int KA = (KD == 0) ? 0 : int'(TA[49:47]);
                 logic [W-1:0]  a, b, s, q;
                 logic [VW-1:0] ra, rb;
                 logic [30:0]   kc;
@@ -161,15 +163,15 @@ module mono_dp18 #(
                     assign ra = rd(v, vd1, vd2, vd3, A, DA);
                     assign rb = rd(v, vd1, vd2, vd3, B, DB);
                     if (KA == 5) begin : g_ka                // operand A is the output constant K_i (i = its A field)
-                        localparam int KI = int'(kara_pkg::node_tab(A) >> 26 & 10'h3FF);
+                        localparam int KI = int'(TA[35:26]);
                         always_comb begin
                             case (rr[LV - 1])
-                                9'd1: kc = kara_pkg::KC(1, KI);
-                                9'd2: kc = kara_pkg::KC(2, KI);
-                                9'd3: kc = kara_pkg::KC(3, KI);
-                                9'd4: kc = kara_pkg::KC(4, KI);
-                                9'd5: kc = kara_pkg::KC(5, KI);
-                                default: kc = kara_pkg::KC(0, KI);
+                                9'd1: kc = kara_pkg::KC_TAB[(1*16 + KI)*31 +: 31];
+                                9'd2: kc = kara_pkg::KC_TAB[(2*16 + KI)*31 +: 31];
+                                9'd3: kc = kara_pkg::KC_TAB[(3*16 + KI)*31 +: 31];
+                                9'd4: kc = kara_pkg::KC_TAB[(4*16 + KI)*31 +: 31];
+                                9'd5: kc = kara_pkg::KC_TAB[(5*16 + KI)*31 +: 31];
+                                default: kc = kara_pkg::KC_TAB[KI*31 +: 31];
                             endcase
                         end
                         assign a = {{(W - 31){1'b0}}, kc};
@@ -214,7 +216,7 @@ module mono_dp18 #(
         end
         // ---- the 16 outputs: fold at the level after the root, delayed to L18 ----
         for (genvar i = 0; i < 16; i++) begin : g_out
-            localparam logic [20:0] OT = kara_pkg::out_tab(i);
+            localparam logic [20:0] OT = kara_pkg::OUT_TAB[i*21 +: 21];
             localparam int OID = OT[20:11];
             localparam int OL  = OT[10:6];
             localparam int OW  = OT[5:0];
