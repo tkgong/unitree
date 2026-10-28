@@ -3,7 +3,7 @@
 // Monolith datapaths, blake and the round index rg[g] of each block group.
 //   PE 0: datapath 0 (lanes 396..403) + group 0 (blocks 0..4, lanes 0..109, copy 0) + group 1 (blocks 5..8, lanes 110..197)
 //   PE 1: datapath 1 (lanes 448..455) + group 2 (blocks 9..13, lanes 198..307, copy 1) + group 3 (blocks 14..17, 308..395)
-// The 9 blocks of a PE do their 216 adds per cycle on the first 216 adders of the datapath's level 6 (alu_lend). A program
+// The 9 blocks of a PE do their 216 adds per cycle on the datapath's lent adders (mono_dp18, alu_lend: the first 216 by width). A program
 // holds either Monolith states or ARX blocks, never both (the compiler); the datapath lends while it holds no state.
 module unit18_shared (
     input  logic            clk,

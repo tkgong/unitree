@@ -4,7 +4,7 @@ Sharing of unit18_shared against unit18_mono + unit18_chacha + unit18_blake3 (th
 ring periods, the programs are cycle-identical): logic-only, ALU-only, registers, total; the operator counts.
     python3 report.py [--md out.md]"""
 import os, re, sys
-W = os.path.join(os.path.dirname(os.path.abspath(__file__)), "work")
+W = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.environ.get("WORK", "work"))
 DFF = 4.522                                                    # NangateOpenCellLibrary DFF_X1 um^2
 
 def flat(t):

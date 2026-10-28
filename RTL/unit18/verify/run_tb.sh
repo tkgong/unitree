@@ -3,7 +3,7 @@
 #   sh run_tb.sh [top ...]         tops: shared mono chacha blake3 (default: all); traces in tr/<top>_*.tr
 cd "$(dirname "$0")"
 ALU="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv"
-SRC="../csd_pkg.sv ../add_tree.sv ../mono_dp18.sv ../arx_group.sv ../../pe/axn_step.sv"
+SRC="../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../../pe/axn_step.sv"
 for t in ${*:-shared mono chacha blake3}; do
   if [ ! -x obj_$t/Vunit18_$t ]; then
     rm -rf obj_$t
