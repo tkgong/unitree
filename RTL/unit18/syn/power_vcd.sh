@@ -15,7 +15,9 @@ LIB=$LIBDIR/NangateOpenCellLibrary_typical.lib
 TR=${TRDIR:-../verify/trp}
 [ -f $WK/ng45_cells.v ] || yosys -q -p "read_liberty -ignore_miss_func $LIB; write_verilog -noattr $WK/ng45_cells.v"
 if [ ! -f $WK/${T}_gl.v ]; then
-  yosys -q -l $WK/${T}_gl.log -p "read_liberty -lib $LIB; read_verilog $WK/${T}_rep.v; hierarchy -top unit18_$T; rename -hide w:* c:*; rename -enumerate; write_verilog -noattr -noexpr $WK/${T}_gl.v"
+  TIE=""; grep -q "(zero_)" $WK/${T}_rep.v && TIE="connect -set zero_ 1'b0;"     # OpenROAD's tie-low net (written undeclared)
+  grep -q "(one_)" $WK/${T}_rep.v && TIE="$TIE connect -set one_ 1'b1;"
+  yosys -q -l $WK/${T}_gl.log -p "read_liberty -lib $LIB; read_verilog $WK/${T}_rep.v; hierarchy -top unit18_$T; $TIE rename -hide w:* c:*; rename -enumerate; write_verilog -noattr -noexpr $WK/${T}_gl.v"
 fi
 OBJ=$WK/obj_gl_$T
 if [ ! -x $OBJ/Vunit18_$T ]; then
@@ -24,7 +26,7 @@ if [ ! -x $OBJ/Vunit18_$T ]; then
   verilator --cc --exe --build -j 16 --trace -Wno-fatal -Wno-lint -Wno-style -O1 --x-assign 0 --x-initial 0 \
       --output-split 20000 --output-split-cfuncs 2000 --top-module unit18_$T -Mdir $OBJ \
       -CFLAGS "-O1 -DVTOP=Vunit18_$T -DVTOP_H=\\\"Vunit18_$T.h\\\" -DTOPNAME=\\\"unit18_${T}_gl\\\"" \
-      $WK/ng45_cells.v $WK/${T}_gl.v ../verify/tb_unit18.cpp > $WK/verilator_gl_$T.log 2>&1 \
+      $WK/ng45_cells.v $WK/${T}_gl.v $(pwd)/../verify/tb_unit18.cpp >$WK/verilator_gl_$T.log 2>&1 \
       || { echo "== $T: verilator failed"; grep -E "%Error" $WK/verilator_gl_$T.log | head -n 5; exit 1; }
 fi
 for p in "$@"; do
