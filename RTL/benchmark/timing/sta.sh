@@ -1,7 +1,10 @@
 #!/bin/sh
 # sta.sh - OpenSTA (OpenLane2 container) on a gate netlist of syn/$WORK: <top>_flat.v (syn.sh NET=1) or, with NL=rep, the
 # timing-closed <top>_rep.v (syn/repair.sh). Clock period PERIOD ns (default 1.0) on clk, inputs / outputs at 0, no wires
-# (pre-placement). Prints WNS / TNS, the worst path with fanout / cap / slew and the 30 worst endpoints.
+# (pre-placement). Every input is driven by a flip-flop (DFF_X1 Q: the controller's registers), not by an ideal source.
+# blake (ChaCha20 / BLAKE3) is a program constant: the controller changes it only between programs, with the unit idle, so
+# its paths get two cycles (set_multicycle_path 2); the per-cycle inputs (mono, r, rg, lanes) get one.
+# Prints WNS / TNS, the worst path with fanout / cap / slew and the 30 worst endpoints.
 #   WORK=<dir> NL=flat|rep PERIOD=1.0 sh sta.sh <top>        -> syn/$WORK/<top>_<NL>_sta.out
 R=$(cd "$(dirname "$0")/../.." && pwd); . "$R/env.sh"
 cd "$R/syn"
@@ -13,6 +16,9 @@ link_design unit18_$T
 create_clock -name clk -period $PER [get_ports clk]
 set_input_delay 0 -clock clk [delete_from_list [all_inputs] [get_ports clk]]
 set_output_delay 0 -clock clk [all_outputs]
+set_driving_cell -lib_cell DFF_X1 -pin Q [delete_from_list [all_inputs] [get_ports clk]]
+set_multicycle_path 2 -setup -from [get_ports blake]
+set_multicycle_path 1 -hold -from [get_ports blake]
 report_wns
 report_tns
 report_checks -path_delay max -format full -digits 3 -group_count 1 -fields {fanout cap slew}
