@@ -66,8 +66,8 @@ assert g.gpu_init(bytes(256), b"".join(v.to_bytes(4, "little") for row in MRC fo
 gp = GpuPower(); time.sleep(1.0)
 t0 = time.time(); time.sleep(SEC); gidle, _ = gp.mean(t0, time.time())
 for kind in NAME:
-    pc = ctypes.c_double(0); reps = 4
-    t0, t1, trees = sustain(lambda: g.tree2_bench(kind, 1, 1, L, 8, reps, ctypes.byref(pc)), 8 * reps)
+    reps = 500                                               # 500 x 8 trees per call (~0.3 s of kernels at 2^18), no PCIe copy:
+    t0, t1, trees = sustain(lambda: g.tree2_bench(kind, 1, 1, L, 8, reps, None), 8 * reps)   # the call's setup is < 5%
     w, ns = gp.mean(t0, t1); dt = t1 - t0
     rows.append(("GPU", kind, dt / trees * 1e6, w, gidle, w * dt / trees * 1e6, (w - gidle) * dt / trees * 1e6, ns))
 gp.stop()
