@@ -79,7 +79,8 @@ class GDDR6(HBM):
     RATIO = 7, 4                                     # memory clocks per unit cycles
 
     def __init__(s, channels=16, mapper="RoBaRaCoCh", nbl=2, extra=()):
-        HBM.__init__(s, channels, mapper, nbl, yaml=os.path.join(HERE, "gddr6.yaml"), extra=extra)
+        rows = 65536 // channels                     # the model checks density = channels x banks x rows x row bytes = 8 Gb
+        HBM.__init__(s, channels, mapper, nbl, yaml=os.path.join(HERE, "gddr6.yaml"), extra=(f"MemorySystem.DRAM.org.row={rows}", *extra))
         s.peak = 16 * s.RATIO[0] / s.RATIO[1] * channels   # B per unit cycle (16 B per CK per channel at nBL 2)
         s.acc = 0                                     # memory clocks owed
 

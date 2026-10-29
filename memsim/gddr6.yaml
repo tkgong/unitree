@@ -5,8 +5,9 @@
 #     nRFC 210 CK = 120 ns, nREFI 3333 CK = 1.9 us (JEDEC GDDR6), nFAW 28 (x16).
 #   - access: 32 B per RD / WR = BL16 x 16 bit = one value slot of our SRAM (org.channel_width 32 x the model's prefetch 8).
 #     nBL 2: BL16 at 14 Gb/s occupies the 16-bit channel 1.14 ns = 2 CK -> 16 B per CK per channel = 28 GB/s, x16 = 448 GB/s.
-#   - rows: 2 KB (512 columns x 32 B = the x16 GDDR6 page); 4 bank groups x 4 banks; 4096 rows (density 8 Gb per the model's
-#     check: 2 GB of address space, the trees use < 32 MB). channel: set per run (memsim/hbm.py).
+#   - rows: 2 KB (512 columns x 32 B = the x16 GDDR6 page); 4 bank groups x 4 banks; channel and row set per run (memsim/hbm.py:
+#     rows = 65536 / channels, so that the model's density check channels x banks x rows x 2 KB = 8 Gb = 1 GB holds; the trees
+#     use < 32 MB).
 #   - the unit's clock is 1 GHz: hbm.py ticks the model 7 times per 4 unit cycles (1.75 CK per cycle).
 # Kept from the HBM2 config: GEM5 (external) frontend, Generic controller, FR-FCFS, all-bank refresh, RoBaRaCoCh mapping.
 Frontend:
