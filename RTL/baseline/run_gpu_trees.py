@@ -1,6 +1,6 @@
 """run_gpu_trees.py - GPU (CUDA) benchmark of the three-primitive tree workloads, level by level with device-resident data:
   GGM trees: BLAKE3 keyed-XOF, ChaCha20      Merkle trees: BLAKE3, Monolith-31
-1. correctness of every GPU tree against the Python models (same framing as dse/TOP/verify/compile_tree.py)
+1. correctness of every GPU tree against the Python models (same framing as RTL/compiler/compile_tree.py)
 2. GPU time per tree / ns per node / Mnodes/s for 2^10 .. 2^22 leaves
 3. (--unit) the same trees compiled onto the HLS unit (compile_tree.py on dse/TOP/verify/ld_16.dll): cycles -> time
    at 1 GHz, GPU / one unit, units for 10x the GPU
@@ -84,7 +84,7 @@ for name, kind, p, _ in WORK:
 if UNIT:
     PY = sys.executable
     DLL = os.path.join(HERE, "..", "..", "dse", "TOP", "verify", "ld_16.dll")
-    CT = os.path.join(HERE, "..", "..", "dse", "TOP", "verify", "compile_tree.py")
+    CT = os.path.join(HERE, "..", "compiler", "compile_tree.py")
     USZ = {"ggm": [10, 14, 18, 22], "merkle": [10, 14, 18, 22]}          # 18, 22: scaled from the 2^14 (2^12 Monolith) schedule, 97-99% utilisation
     print(f"\n| tree | size | unit cycles (compiled schedule) | unit us @ 1 GHz | GPU us | one unit vs GPU (GPU time / unit time) | units for 10x GPU |")
     print("|---|---:|---:|---:|---:|---:|---:|")

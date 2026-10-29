@@ -1,13 +1,28 @@
 # RTL/ - the unified hash unit (ChaCha20, BLAKE3, Monolith-31) in hand-written SystemVerilog
 
 One shared unit and the three separate (natural) units it is compared with, at the same throughput (the same pipelines
-and ring periods; every program runs cycle-identical on both). It is the hand-written RTL of the HLS DSE configuration
-bz3s (`dse/TOP/build_bz3s.sh`): 18 ARX blocks (ChaCha20 / BLAKE3) and two Monolith-31 datapaths, fully pipelined (II = 1).
-The programs come from the software compiler `dse/TOP/verify/compile_tree.py` (atomic per-cycle operations, one primitive
-and one tree kind per program). Results: `benchmark/README.md`.
+and ring periods; ChaCha20 GGM, BLAKE3 Merkle and Monolith Merkle programs run cycle-identical on both, BLAKE3 GGM within
+2.2%). It is the hand-written RTL of the HLS DSE configuration bz3s (`dse/TOP/build_bz3s.sh`): 18 ARX blocks (ChaCha20 /
+BLAKE3) and two Monolith-31 datapaths, fully pipelined (II = 1). Results: `benchmark/README.md`.
+
+## The compiler (`compiler/compile_tree.py`)
+
+The hardware has no mode register, no scheduler and no run-time operand selection between primitives: all of that is done
+in software before the run. The compiler takes one request (a Merkle tree over 2^n leaves or a GGM tree of depth n, one
+primitive: BLAKE3, ChaCha20 or Monolith-31) and lowers it to the unit's atomic level: one instruction per clock cycle that
+says which ring slots issue which node, the round index of every block group and datapath (`rg`, `r`, `r2`), the BLAKE3 /
+ChaCha20 bit (fixed for the whole program), and the lanes to load or copy. Every hash is split into its traversals of the
+pipeline (a Monolith permutation re-enters its 18-level datapath 7 times, r = 0..6; the ARX rounds re-enter their block
+group with the round index rg), every dependency (a Merkle parent after both
+children, a GGM child after its parent) and every SRAM slot / DRAM transfer is resolved at compile time, so the adders of a
+program belong to one primitive and the datapath needs no select logic for anything the compiler knows.
+It then executes the stream cycle by cycle on the C++ model of the unit (`dse/TOP/verify/<model>.so`), checks every root /
+leaf against the Python references (`dse/TOP/verify/models.py`), models the SRAM exactly and the DRAM with Ramulator2
+(`hbm=` / `gddr=`, `memsim/`), and with `trace=<file>` writes the closed-loop trace the RTL testbench replays.
 
 | directory | what |
 |---|---|
+| `compiler/` | `compile_tree.py`: the software compiler + cycle simulator + memory model above |
 | `src/alu/` | the ALUs, one module per function of `dse/TOP/alu_core.h`; `alu_add_ks45.sv` the structural Kogge-Stone adder of the timing flow, `nangate45_cells.sv` its cell models for simulation |
 | `src/shared/` | the shared unit `unit18_shared.sv` and its blocks (`mono_dp18`, `arx_group`, `axn_step`, `kara_pkg`), which the standalone units instantiate with private adders |
 | `src/standalone/` | the natural units `unit18_chacha.sv`, `unit18_blake3.sv`, `unit18_mono.sv` |

@@ -20,9 +20,9 @@ paths, outside the repository); the CPU / GPU baselines are in `../../RTL/baseli
 | HLS top `lane_pipe` | `bz/pipe_axn.h`, `bz/lane_mono_kl.inc`, `bz/lane_mono2_kl.inc` (generated), `level_ops_axn.h` (ARX steps), `p2_engine.h`, `alu_core.h`, `level_ops.h`, `round_unit.h`, `lane_mono_rp1.inc`, constant tables `*.inc`, `../common/{lanes,field31}.h` |
 | ALUs (`alu_core.h`) | every operator of the unit is a call: `alu_lend<W>` / `alu_add<W>` (the 912 lendable Concrete adders; `alu_add` is a non-inlined module, one instance per call), `alu_addp<W>` (private adders), `alu_mul31` / `alu_mul31_en` (31x31 multipliers), `alu_fold<H>` / `alu_fold31` / `alu_canon` / `alu_negm31` (M31 reduction), `alu_bar31` (Bars), `alu_xor` (ARX). Rotations, packing, P / sigma stay wiring. (`alu.h` is the older tree-datapath ALU set, only included through `round_unit.h`, never called by these units) |
 | generators | `gen_lane_mono6.py` (datapath; uses `kara_dag.py`, `mono_constants.json`), `gen_pipe_axn.py` (ARX groups, copies, `--p2eng=4`) |
-| software compiler + scheduler | `verify/compile_tree.py` (Merkle / GGM tree -> per-cycle instruction stream: ARX rings, ChaCha copy alternation, Poseidon2 programs, engine assignment; runs it on the simulator and checks every node), `verify/pos2_prog.py` (Poseidon2 program, `P2ProgEng`) |
+| software compiler + scheduler | `../../RTL/compiler/compile_tree.py` (Merkle / GGM tree -> per-cycle instruction stream: ARX rings, ChaCha copy alternation, Poseidon2 programs, engine assignment; runs it on the simulator and checks every node), `verify/pos2_prog.py` (Poseidon2 program, `P2ProgEng`) |
 | simulator | `verify/shim_axn.cpp` built by `../verify/build_dll.sh` into `verify/lz_16.dll` (one call = one clock, entry `lp_step_e`); `verify/check_axn.py` checks it issue by issue against `verify/models.py` (RFC 8439, official BLAKE3, Plonky3 KATs) |
-| review checks | `verify/compile_tree.py ... audit` (memory-model invariants, open reconstruction), `verify/verify_layout.py` (HBM layouts / row staging), `verify/diff_dll.py old.dll new.dll` (random-cycle differential test of two builds), `verify/verify_area.py` (area / sharing from the csynth reports) |
+| review checks | `../../RTL/compiler/compile_tree.py ... audit` (memory-model invariants, open reconstruction), `verify/verify_layout.py` (HBM layouts / row staging), `verify/diff_dll.py old.dll new.dll` (random-cycle differential test of two builds), `verify/verify_area.py` (area / sharing from the csynth reports) |
 | flattened tops (no #if / HAS(), for reading) | `bz/pipe_axn_flat.h` (four primitives), `bz3/pipe_axn_flat.h` (ChaCha20 + BLAKE3 + Monolith, no Poseidon2: Monolith-only datapaths, no engines; DLL `verify/lz3_16.dll`); made by `flatten_pipe.py <pipe_axn.h> <out> 0x16`, then `inline_flat.py <out>`: every datapath level (`monk_lx<k>`), ARX step (`axn_ops<j>` / `axn_fin<j>`) and engine (`p2eng<E>`) call is replaced by its body, so `lane_pipe` itself is written as `alu_core.h` calls (912 `alu_lend`, ...) plus wiring; synthesis configs `syn/bz_16f_flat`, `syn/bz3_flat` compile these files. The included files only supply constants and wiring helpers; `level_ops_axn_flat.h` comes from `flatten_ops.py` |
 | natural comparison units | `pwe/` (Poseidon2 only + 4 engines, `verify/lpwe_10.dll`), `nat38c/` (ChaCha20 only, 1.5 rounds per traversal, `verify/lnc_04.dll`) |
 | synthesis configs | `syn/bz_16f` (four primitives), `syn/bz_12e` (BLAKE3 + Monolith + Poseidon2), `syn/bz_10e` (Monolith + Poseidon2), `syn/pwe_10`, `syn/n38c_04`; run with `sh ../run_dse.sh /d/unitree/dse/TOP/syn/bz_16f` |
@@ -30,8 +30,8 @@ paths, outside the repository); the CPU / GPU baselines are in `../../RTL/baseli
 ```
 sh build_all.sh                                                 # regenerate bz/ bz3/ pwe/ nat38c/ and the flattened tops, build all DLLs, bit-exact checks
 sh build_bz.sh                                                  # regenerate bz/, build verify/lz_16.dll, bit-exact check (ALL OK)
-python verify/compile_tree.py verify/lz_16.dll merkle pos2 14 fifo
-python verify/compile_tree.py verify/lz_16.dll ggm chacha 14 deep
+python ../../RTL/compiler/compile_tree.py verify/lz_16.dll merkle pos2 14 fifo
+python ../../RTL/compiler/compile_tree.py verify/lz_16.dll ggm chacha 14 deep
 ```
 
 Run one Vitis csynth at a time: the array-partition step of a full unit commits 60-70 GB. Write ARX selects between scalar

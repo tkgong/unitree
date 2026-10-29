@@ -1,6 +1,6 @@
 # GPU tree benchmarks (2026-10-17): GGM (BLAKE3 keyed-XOF, ChaCha20) and Merkle (BLAKE3, Monolith-31) trees on the RTX 3070
 
-gpu_trees.cu (includes gpu_prims.cu; build_gpu_trees.sh -> gpu_trees.dll), run_gpu_trees.py [--unit] [max log2]. Trees are built level by level with device-resident data (one kernel launch per level; the GGM top levels and the Merkle top levels are launch-latency bound). Node framings are identical to dse/TOP/verify/compile_tree.py, and every GPU tree is checked against the Python models (models.py). The unit rows are the compiled schedules of the final unit (dse/TOP pipe_axn.h, be: ChaCha/BLAKE3 x8 on Monolith adders, h lanes co-located) executed on verify/ld_16.dll; 2^18 and 2^22 are scaled linearly from the largest simulated size (97-99% utilisation there).
+gpu_trees.cu (includes gpu_prims.cu; build_gpu_trees.sh -> gpu_trees.dll), run_gpu_trees.py [--unit] [max log2]. Trees are built level by level with device-resident data (one kernel launch per level; the GGM top levels and the Merkle top levels are launch-latency bound). Node framings are identical to RTL/compiler/compile_tree.py, and every GPU tree is checked against the Python models (models.py). The unit rows are the compiled schedules of the final unit (dse/TOP pipe_axn.h, be: ChaCha/BLAKE3 x8 on Monolith adders, h lanes co-located) executed on verify/ld_16.dll; 2^18 and 2^22 are scaled linearly from the largest simulated size (97-99% utilisation there).
 
 GPU: NVIDIA GeForce RTX 3070, 46 SMs, 1.81 GHz
   BLAKE3 keyed-XOF GGM depth 6 (64 leaves) vs Python model: OK

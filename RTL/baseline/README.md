@@ -30,7 +30,7 @@ Results (2^20 leaves, i7-12700K, 20 threads): `RESULTS.md`.
 ## Tree baselines for the unified unit (2026-10-22)
 
 The unit's four tree workloads (BLAKE3 Merkle, BLAKE3-XOF GGM, ChaCha20 GGM, Monolith-31 Merkle) with the node framings of
-`dse/TOP/verify/compile_tree.py`, every implementation checked against the Python models (`dse/TOP/verify/models.py`).
+`RTL/compiler/compile_tree.py`, every implementation checked against the Python models (`dse/TOP/verify/models.py`).
 
 - **CPU** (`cpu/`, i7-12700K): `cpu_trees.cpp` + the official BLAKE3 C library 1.8.2 (`cpu/blake3_c/`, from the `blake3`
   crate: `blake3_hash_many` for Merkle parents, `blake3_compress_xof` for GGM nodes), our 8-way SoA / AVX2 kernels, scalar

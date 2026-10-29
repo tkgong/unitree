@@ -1,6 +1,6 @@
 # memsim - UniZK's HBM model (Ramulator2 / RamSim) as the HBM of our tree simulator
 
-`dse/TOP/verify/compile_tree.py` models the on-chip SRAM exactly (32 B slots, never exceeded, audited) but the HBM as an
+`RTL/compiler/compile_tree.py` models the on-chip SRAM exactly (32 B slots, never exceeded, audited) but the HBM as an
 ideal pipe: `bw=<B/cycle>`, reads and writes share it, no latency, no banks, no row buffer, no refresh. This folder replaces
 that pipe with the cycle-level DRAM model UniZK uses: their RamSim, a fork of Ramulator2 (`ramsim/`, MIT, from
 `D:\UniZK\thirdparty\ramsim`, commit 9c94b55 of the UniZK repo).
@@ -72,7 +72,7 @@ Results (dana336, 2026-10-29; bz3s unit, 32 KB SRAM per core, every run `audit` 
 sh memsim/build_linux.sh                 # ~3.5 min: libramulator.so, ap_types, lz_16.so, lz3_16.so, check_axn ALL OK
 python3 memsim/bench_hbm.py 1 2 4 8 --nbl 2 --nbl 4 --map RoBaRaCoCh --map MOP4CLXOR --md memsim/results/bench_hbm.md
 python3 memsim/sweep.py 14                # every run with audit and the bit-exact check
-cd dse/TOP && python3 verify/compile_tree.py verify/lz_16.so merkle blake3 16 sram=64 hbm=8 store=all audit open=1,64
+cd dse/TOP && python3 ../../RTL/compiler/compile_tree.py verify/lz_16.so merkle blake3 16 sram=64 hbm=8 store=all audit open=1,64
 ```
 
 ## Results (dana336, 2026-10-27; every run `audit` OK and bit-exact; full tables `results/bench_hbm.md`, `results/sweep.md`, logs in `results/logs/`)

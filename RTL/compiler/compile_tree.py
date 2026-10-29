@@ -12,6 +12,9 @@ and to the ARX blocks in a ChaCha20 / BLAKE3 program; nothing is selected at run
 Dependencies (a Merkle parent after both children, a GGM child after its parent) are resolved at compile time.
 usage: compile_tree.py <dll> merkle blake3|mono <log2 leaves> [deep|fifo] [xT]    T independent trees in one program
        compile_tree.py <dll> ggm chacha|blake3 <depth> [deep|fifo] [xT]
+<dll>: the HLS unit model (dse/TOP/verify/<name>.so, memsim/build_linux.sh; lz3s_16 = the unit RTL/src implements), e.g.
+       cd dse/TOP && python3 ../../RTL/compiler/compile_tree.py verify/lz3s_16.so merkle blake3 18 sram=32 gddr=2 store=out audit
+trace=<file>: the closed-loop trace of the RTL testbench (RTL/test/tb_unit18.cpp, RTL/test/make_traces.sh).
 deep = DFS (deepest ready node first, across all trees), fifo = BFS (level order across all trees). The top TOPL levels of
 every tree (their results) are accounted as on-chip (SRAM) residents, the lower levels as HBM traffic.
 Memory model (one tree): sram=<KB> [bw=<B/cycle>] [store=all|out]. The on-chip SRAM has a fixed size: every 32-byte
@@ -43,7 +46,8 @@ hlay=block|level|tile (where stored nodes go). With open=, each layout's open ba
 """
 import ctypes, heapq, os, random, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+VER = os.path.join(HERE, "..", "..", "dse", "TOP", "verify")                       # models.py (the Python references), the unit models
+sys.path.insert(0, VER)
 from models import *
 
 DLL, REQ = os.path.abspath(sys.argv[1]), sys.argv[2]
@@ -222,7 +226,7 @@ if MEMSIM:
     HCH = HCH or GCH
     HBMSIM = HCH > 0
     if HBMSIM:
-        sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "memsim"))
+        sys.path.insert(0, os.path.join(HERE, "..", "..", "memsim"))
         import hbm as hbmlib
         HMAP = next((a[5:] for a in sys.argv[5:] if a.startswith("hmap=")), "RoBaRaCoCh")
         HPORT = int(next((a[6:] for a in sys.argv[5:] if a.startswith("hport=")), str(HCH)))   # accesses the SRAM side can send per cycle
@@ -934,67 +938,4 @@ if MEMSIM:
         print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
 if TRF: TRF.write("Z" + chr(10)); TRF.close(); print(f"  trace               {TRACE_F}: {cycles:,} cycles")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
-HW = next((a[3:] for a in sys.argv[5:] if a.startswith("hw=")), "")
-if HW:                                                                                # the hardware program (for the RTL/fsm accelerator, in git history): control words + per-ring descriptors
-    # slot map (32 B values): Merkle leaves 0 .. 2^SZ-1, internal nodes level-major after them (root last);
-    # GGM: node (level, idx) at 2^level - 1 + idx (the root seed at 0, the leaves last)
-    def slot(nd):
-        if REQ == "merkle": return nd.idx if nd.kind == "leaf" else (1 << SZ) + ((1 << SZ) - (1 << (SZ - nd.level + 1))) + nd.idx
-        return (1 << nd.level) - 1 + nd.idx
-    NSLOT = (1 << (SZ + 1)) - 1
-    os.makedirs(HW, exist_ok=True)
-    NR_ = len(rings); NM_ = len(BASES)
-    desc = [[] for _ in range(NR_ + NM_)]                                            # per ring / datapath: descriptors in issue order
-    maxi = maxf = 0
-    with open(os.path.join(HW, "ctrl.hex"), "w") as f:
-        for rec in prog:
-            mono_now, r_, rg_, htap_ = rec["ctrl"]
-            issue = 0; fin = 0
-            for kind, ri, rr, ids in rec["issue"]:
-                if kind != "MEM": continue
-                k = int(ri[1:]) + NR_ if isinstance(ri, str) else ri
-                issue |= 1 << k
-            grp = {}                                                                  # ring -> {block position: node}
-            for (bi, nd) in rec["mem"]:
-                ri = next(i for i, R in enumerate(rings) if bi in R["blocks"]); grp.setdefault(ri, {})[rings[ri]["blocks"].index(bi)] = nd
-            for ri, g in grp.items():                                                 # one group per issue: nb descriptors, invalid ones padded
-                for b in range(len(rings[ri]["blocks"])): desc[ri].append(g.get(b))
-            for (d, nd) in rec["memm"]: desc[NR_ + d].append(nd)
-            for (jb, nd) in rec["fin"]:
-                src = next(i for i, R in enumerate(rings) if jb in R["lblocks"])        # the ring whose last-span lanes hold the result
-                ri = src if not ALT else (src + NCH // 2) % NCH                          # ChaCha: the group was issued in the partner copy
-                fin |= 1 << ri
-            for (d, nd) in rec["finm"]: fin |= 1 << (NR_ + d)
-            maxi = max(maxi, len(rec["mem"]) + len(rec["memm"])); maxf = max(maxf, len(rec["fin"]) + len(rec["finm"]))
-            w = 0; sh = 0
-            w |= (mono_now[0] | (mono_now[1] << 1 if NDP == 2 else 0)) << sh; sh += 2
-            w |= (htap_ & 1) << sh; sh += 1
-            w |= (BLAKE & 1) << sh; sh += 1
-            w |= (r_[0] & 511) << sh; sh += 9
-            w |= ((r_[1] if NDP == 2 else 0) & 511) << sh; sh += 9
-            for g in range(NG): w |= (rg_[g] & 511) << sh; sh += 9
-            w |= issue << sh; sh += 16
-            w |= fin << sh; sh += 16
-            f.write(f"{w:0{(sh + 3) // 4}x}\n")
-    CTRLW = sh
-    for k in range(NR_ + NM_):
-        with open(os.path.join(HW, f"desc_{k}.hex"), "w") as f:
-            for nd in desc[k]:
-                if nd is None: f.write(f"{0:026x}" + chr(10)); continue                # padding: valid bit 103 = 0
-                if nd.kind == "m":
-                    kids = [slot(x) for x in nd.kids]; out = [slot(nd), 0]; idx = 0; lev = 0; root = 1 if nd.root else 0; gg = 0
-                else:
-                    kids = [slot(nd), 0]; out = [slot(x) for x in nd.kids]; idx = nd.idx; lev = nd.level; root = 0; gg = 1
-                w = gg | (kids[0] << 1) | (kids[1] << 17) | ((idx & 0xffffffff) << 33) | (lev << 65) | (root << 70) | (out[0] << 71) | (out[1] << 87) | (1 << 103)
-                f.write(f"{w:026x}\n")
-    leaves = sorted(nd.idx for nd in nodes if nd.kind == "leaf") if REQ == "merkle" else [0]
-    with open(os.path.join(HW, "meta.txt"), "w") as f:
-        f.write(f"req {REQ}\nprim {prim}\nsz {SZ}\ncycles {cycles}\nctrl_bits {CTRLW}\nrings {NR_}\nmono {NM_}\nnslot {NSLOT}\n")
-        f.write(f"blocks {' '.join(str(len(R['blocks'])) for R in rings)}\nmax_issue_nodes {maxi}\nmax_finish_nodes {maxf}\n")
-        f.write(f"ring_blocks {';'.join(','.join(str(b) for b in R['blocks']) for R in rings)}\nring_lblocks {';'.join(','.join(str(b) for b in R['lblocks']) for R in rings)}\n")
-        f.write(f"ring_lo {' '.join(str(R['lo']) for R in rings)}\nring_hi {' '.join(str(R['hi']) for R in rings)}\nring_llo {' '.join(str(R['llo']) for R in rings)}\nring_lhi {' '.join(str(R['lhi']) for R in rings)}\n")
-        f.write(f"spans {';'.join(','.join(str(g) for g in R['spans']) for R in rings)}\nglo {' '.join(str(x) for x in GLO)}\nghi {' '.join(str(x) for x in GHI)}\nbases {' '.join(str(B) for B in BASES)}\nbb {' '.join(str(x) for x in BB)}\nhb {' '.join(str(x) for x in HB)}\n")
-        f.write(f"root_slot {slot(roots[0]) if REQ == 'merkle' else 0}\nalt {1 if ALT else 0}\nnio {NIO}\nng {NG}\n")
-    print(f"  hardware program    {HW}: {cycles:,} control words of {CTRLW} bits, descriptors per ring {[len(d) for d in desc]}, "
-          f"slots {NSLOT:,} x 32 B, max {maxi} issues / {maxf} finishes per cycle")
 print(f"  check: all GGM leaves / Merkle roots and parents vs Python reference: {'OK' if ok else 'FAIL'}")

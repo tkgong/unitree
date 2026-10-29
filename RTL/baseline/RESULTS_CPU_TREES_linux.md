@@ -1,6 +1,6 @@
 # CPU tree baselines (Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz, 16 threads)
 
-Same node framings as dse/TOP/verify/compile_tree.py and the GPU trees (gpu_trees.cu); leaves / seeds are 31-bit words.
+Same node framings as RTL/compiler/compile_tree.py and the GPU trees (gpu_trees.cu); leaves / seeds are 31-bit words.
 Official BLAKE3 C library 1.8.2: blake3_hash_many processes 8 inputs per call on this CPU.
 Built with gcc / g++-13 -O3 -march=native and cargo 1.93 -C target-cpu=native (Plonky3); timing excludes buffer allocation and input generation.
 

@@ -7,6 +7,7 @@ from multiprocessing import Pool
 
 HERE = os.path.dirname(os.path.abspath(__file__)); TOP = os.path.join(HERE, "..", "dse", "TOP")
 LOGS = os.path.join(HERE, "results", "logs"); os.makedirs(LOGS, exist_ok=True)
+CT = os.path.join(HERE, "..", "RTL", "compiler", "compile_tree.py")   # the tree compiler
 DLL = "verify/lz_16.so"                                     # bz: four primitives (the unit of the README memory-model runs)
 
 WL = {   # workload -> (compile_tree arguments, README bw, channel counts compared)
@@ -41,8 +42,8 @@ def run(j):
     if os.path.exists(log) and "check:" in open(log).read() or os.path.exists(log) and "openonly" in j[3] and "HBM2 8 ch" in open(log).read():
         return log
     with open(log, "w") as f:
-        f.write(f"# python3 verify/compile_tree.py {DLL} {j[3]}\n"); f.flush()
-        subprocess.run([sys.executable, "verify/compile_tree.py", DLL] + j[3].split(), cwd=TOP, stdout=f, stderr=subprocess.STDOUT)
+        f.write(f"# python3 ../../RTL/compiler/compile_tree.py {DLL} {j[3]}\n"); f.flush()
+        subprocess.run([sys.executable, CT, DLL] + j[3].split(), cwd=TOP, stdout=f, stderr=subprocess.STDOUT)
     return log
 
 

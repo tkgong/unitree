@@ -5,14 +5,15 @@ staged row completes exactly when its last node arrives)."""
 import sys, collections, io, contextlib
 import os
 VER = os.path.dirname(os.path.abspath(__file__))
-SRC = open(os.path.join(VER, "compile_tree.py"), encoding="utf-8").read()
+CT = os.path.join(VER, "..", "..", "..", "RTL", "compiler", "compile_tree.py")
+SRC = open(CT, encoding="utf-8").read()
 SRC = SRC.split("if OPENONLY:\n")[0]                              # functions only: the commit loop is skipped under openonly
 n = 0
 for req, prim in (("merkle", "blake3"), ("ggm", "chacha")):
     for sz in (2, 3, 4, 5, 8, 10, 13):
         for store in ("all", "out", "k1", "k2", "k3"):
             sys.argv = ["compile_tree.py", os.path.join(VER, "lz_16.dll"), req, prim, str(sz), "deep", "sram=64", f"store={store}", "openonly"]
-            g = {"__name__": "ct", "__file__": os.path.join(VER, "compile_tree.py")}
+            g = {"__name__": "ct", "__file__": os.path.abspath(CT)}
             with contextlib.redirect_stdout(io.StringIO()): exec(compile(SRC, "compile_tree.py", "exec"), g)
             addr, stored, row_full, ROWB, SZ = g["addr"], g["stored"], g["row_full"], g["ROWB"], g["SZ"]
             nodes = [(l, j) for l in range(SZ + 1) for j in range(1 << (SZ - l))]

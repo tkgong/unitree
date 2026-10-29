@@ -57,7 +57,7 @@ LINUX = os.name != "nt"                                     # Linux (dana336): b
 SUF = "_linux" if LINUX else ""
 CPU_NAME = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")), "?") if LINUX else "i7-12700K, 12 cores / 20 threads"
 out(f"# CPU tree baselines ({CPU_NAME}, {THREADS} threads)\n")
-out("Same node framings as dse/TOP/verify/compile_tree.py and the GPU trees (gpu_trees.cu); leaves / seeds are 31-bit words.")
+out("Same node framings as RTL/compiler/compile_tree.py and the GPU trees (gpu_trees.cu); leaves / seeds are 31-bit words.")
 out(f"Official BLAKE3 C library 1.8.2: blake3_hash_many processes {cpu.cpu_b3_simd_degree()} inputs per call on this CPU.")
 out(("Built with gcc / g++-13 -O3 -march=native and cargo 1.93 -C target-cpu=native (Plonky3)" if LINUX else
      "Built with clang 19 -O3 -march=native (C/C++) and rustc 1.95 -C target-cpu=native (Plonky3)") + "; timing excludes buffer allocation and input generation.\n")
