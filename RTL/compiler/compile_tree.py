@@ -45,8 +45,8 @@ controller accepts it. hmap=RoBaRaCoCh|ChRaBaRoCo (address mapping), hport=<n> a
 hlay=block|level|tile (where stored nodes go). With open=, each layout's open batch is also timed on the HBM2 model.
 """
 import ctypes, heapq, os, random, sys
-HERE = os.path.dirname(os.path.abspath(__file__))
-VER = os.path.join(HERE, "..", "..", "dse", "TOP", "verify")                       # models.py (the Python references), the unit models
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")          # the repository (models.py exports its own HERE)
+VER = os.path.join(ROOT, "dse", "TOP", "verify")                                   # models.py (the Python references), the unit models
 sys.path.insert(0, VER)
 from models import *
 
@@ -226,7 +226,7 @@ if MEMSIM:
     HCH = HCH or GCH
     HBMSIM = HCH > 0
     if HBMSIM:
-        sys.path.insert(0, os.path.join(HERE, "..", "..", "memsim"))
+        sys.path.insert(0, os.path.join(ROOT, "memsim"))
         import hbm as hbmlib
         HMAP = next((a[5:] for a in sys.argv[5:] if a.startswith("hmap=")), "RoBaRaCoCh")
         HPORT = int(next((a[6:] for a in sys.argv[5:] if a.startswith("hport=")), str(HCH)))   # accesses the SRAM side can send per cycle
