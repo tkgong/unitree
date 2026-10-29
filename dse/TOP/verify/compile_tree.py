@@ -231,6 +231,15 @@ if MEMSIM:
         HBMX = hbmlib.GDDR6(HCH, HMAP, HNBL) if HKIND == "gddr" else hbmlib.HBM(HCH, HMAP, HNBL)
         BW = float(HBMX.peak)
     rsent = {}; rlat = [0, 0, 0]                                                     # hbm=: reads in flight (node id -> send cycle); latency n / sum / max
+    REC = next((a[4:] for a in sys.argv[5:] if a.startswith("rec=")), "")           # rec=<file>: record this core's DRAM stream (cycle, address, write)
+    BGF = next((a[3:] for a in sys.argv[5:] if a.startswith("bg=")), "")            # bg=<file>:<n>: n other cores replay that recorded stream on the same
+    rec_log = []                                                                      # DRAM, each at its recorded pace (falling behind when its access is refused)
+    BG = []
+    if BGF:
+        fn, nb = BGF.rsplit(":", 1)
+        trc = [(int(l[0]), int(l[1]), int(l[2])) for l in (ln.split() for ln in open(fn))]
+        BG = [[deque(trc), 0, (k + 1) << 26] for k in range(int(nb))]                 # queue, cycles behind the recorded pace, address offset 64 MB x k
+    BGTAG = 1 << 40                                                                   # tags of the other cores' reads
     STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
     KSK = int(STORE[1:]) if STORE.startswith("k") else (0 if STORE == "all" else 1 << 30)   # levels (above the leaves) not stored
     def stored(l):                                                                    # is level l (0 = leaves) written to HBM
@@ -461,6 +470,11 @@ if MEMSIM:
     def dma_hbm():                                                                    # hbm=: one cycle against the Ramulator2 HBM2 (memsim/hbm.py)
         global used, used_max, hbm_rd, hbm_wr, dma_cycles, open_budget, wpend, brk_n   # same queues, arbitration and SRAM rules as dma(); the HBM decides
         n = 0; act = False                                                            # when a request is taken (controller queues) and when a read returns
+        for bgq in BG:                                                                # the other cores' streams, in order, each at its own pace
+            bq, lag, off = bgq; k = 0
+            while bq and bq[0][0] + lag <= t and k < HPORT:
+                if HBMX.send(bq[0][1] + off, bq[0][2] == 1, BGTAG): bq.popleft(); k += 1
+                else: bgq[1] += 1; break
         for q in ((wq, rq) if len(wq) > CAP // 8 else (rq, wq)):
             while q and n < HPORT:
                 x = q[0]
@@ -470,17 +484,21 @@ if MEMSIM:
                     if not HBMX.send(a, False, x.id): break                             # in order: a full controller queue stalls the stream
                     if AUDIT: assert not x.res and not x.rinf, "read twice"
                     q.popleft(); n += 1; act = True
+                    if REC: rec_log.append((t, a, 0))
                     used += 1; x.rinf = True; rsent[x.id] = t; peak()                 # the slot is reserved when the read is sent
                     if AUDIT: hadd(x, 1); chk()
                     RROWS.touch(a // ROWB)
                 else:
-                    if not HBMX.send(addr(HLAY, lam(x), x.idx), True, x.id): break
+                    wa = addr(HLAY, lam(x), x.idx)
+                    if not HBMX.send(wa, True, x.id): break
                     if AUDIT: assert x.res and x.nw and not x.wr, "write of a value not computed / not to be written / twice"
                     q.popleft(); n += 1; act = True
+                    if REC: rec_log.append((t, wa, 1))
                     hbm_wr += 32; x.wr = True; x.nwr += 1; mem_free(x); wpend -= 1  # the data left the SRAM: it is in the controller's write buffer
                     for L in LAYOUTS: WROWS[L].touch(addr(L, lam(x), x.idx) // ROWB)
                     if REQ == "ggm" and x.level == SZ: open_budget -= 1
         for tag in HBMX.tick():                                                         # reads that completed this memory clock
+            if tag >= BGTAG: continue                                                   # another core's
             x = nodes[tag]; x.rinf = False; x.res = True; hbm_rd += 32
             d = t + 1 - rsent.pop(tag); rlat[0] += 1; rlat[1] += d; rlat[2] = max(rlat[2], d)
             if REQ == "merkle":
@@ -908,6 +926,9 @@ if MEMSIM:
         while HBMX.cmd("WR") + HBMX.cmd("WRA") < hbm_wr // 32 and drain < 1_000_000: HBMX.tick(); drain += 1
         st = HBMX.stats()
         print(f"    DRAM model        {HBMX.describe()}; SRAM side sends <= {HPORT} accesses/cycle; stored nodes in the {HLAY} layout")
+        if REC: open(REC, "w").write("".join(f"{a} {b} {c}\n" for a, b, c in rec_log))
+        if BG: print(f"    other cores       {len(BG)} cores replaying {BGF.rsplit(':', 1)[0]} on the same DRAM (addresses 64 MB apart); "
+                     f"behind their recorded pace by {[b[1] for b in BG]} cycles at the end, {sum(len(b[0]) for b in BG):,} of their accesses not yet sent")
         print(f"    HBM2 commands     ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
               f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation; write buffers drained {drain} cycles after the last cycle")
         print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
