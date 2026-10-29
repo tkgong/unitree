@@ -39,15 +39,17 @@ W=$(grep -m1 -oE "input \[[0-9]+:0\] lin" $WK/${T}_gl.v | grep -oE "[0-9]+" | he
 RG=$(grep -m1 -oE "input \[[0-9]+:0\] rg" $WK/${T}_gl.v | grep -oE "[0-9]+" | head -n 1); RG=$((RG + 1))
 PF=$(( 43 + 2 * FROM )); PT=$(( 43 + 2 * TO ))              # stimulus phases: 43 reset / warm-up, then 2 per program cycle
 SIM=$WK/gl_$T.vvp
+if [ ! -f $SIM ]; then
+  /usr/bin/time -a -o $WK/time_gl.txt -f "iverilog $T: %e s, %M KB" \
+  $OSS/iverilog -g2012 -o $SIM -DTOP=unit18_$T -Ptb.W=$W -Ptb.RG=$RG $WK/ng45_cells.v $WK/${T}_gl.v tb_gl.v > $WK/iverilog_$T.log 2>&1 \
+      || { echo "== $T: iverilog failed"; head -n 5 $WK/iverilog_$T.log; rm -f $SIM; exit 1; }
+fi
 for p in "$@"; do
   O=$WK/pw_${T}_$p.out; V=$WK/pw_${T}_$p.vcd
   STIM=$WK/stim_${T}_$p.txt $OBJ/Vunit18_$T $TR/$p.tr | tail -n 1 > $O
-  /usr/bin/time -a -o $WK/time_gl.txt -f "iverilog $T $p: %e s, %M KB" \
-  $OSS/iverilog -g2012 -o $SIM.$p -DTOP=unit18_$T "-DSTIM=\"$WK/stim_${T}_$p.txt\"" "-DVCDF=\"$V\"" \
-      -Ptb.W=$W -Ptb.RG=$RG -Ptb.FROM=$PF -Ptb.TO=$PT $WK/ng45_cells.v $WK/${T}_gl.v tb_gl.v > $WK/iverilog_$T.log 2>&1 \
-      || { echo "== $T: iverilog failed"; head -n 5 $WK/iverilog_$T.log; exit 1; }
-  /usr/bin/time -a -o $WK/time_gl.txt -f "vvp $T $p: %e s, %M KB" $OSS/vvp -n $SIM.$p | grep -E "GATE|differs|STIM" >> $O
-  ./vcd_act $V > $WK/act_${T}_$p.txt && rm -f $V $SIM.$p $WK/stim_${T}_$p.txt
+  /usr/bin/time -a -o $WK/time_gl.txt -f "vvp $T $p: %e s, %M KB" \
+  $OSS/vvp -n $SIM +STIM=$WK/stim_${T}_$p.txt +VCD=$V +FROM=$PF +TO=$PT | grep -E "GATE|differs|STIM" >> $O
+  ./vcd_act $V > $WK/act_${T}_$p.txt && rm -f $V $WK/stim_${T}_$p.txt
   python3 act_tcl.py $WK/ng45_cells.v $WK/${T}_gl.v $WK/act_${T}_$p.txt $WK/act_${T}_$p.tcl >> $O
   cat > $WK/pw_${T}_$p.tcl <<TCL
 read_liberty /lib/NangateOpenCellLibrary_typical.lib

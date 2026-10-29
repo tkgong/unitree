@@ -30,14 +30,16 @@ for ln in open(gl_v):
             net = m.group(2).replace(" ", "")
             drv[net] = f"{inst}/{m.group(1)}"
         if s.startswith(");"): inst = None
-span = None; nset = nin = 0; seen = set()
+span = None; nset = nin = 0; seen = set(); sa = {"seq": [0.0, 0], "comb": [0.0, 0]}
 with open(out_f, "w") as o:
     for ln in open(act_f):
         if ln.startswith("SPAN"): span = float(ln.split()[1]); cyc = span / 1000.0; continue
         net, tg, hi = ln.split(); a = int(tg) / cyc; d = int(hi) / span
         if net in drv:
             o.write(f"set_power_activity -pins [get_pins {{{drv[net]}}}] -activity {a:.5f} -duty {d:.4f}\n"); nset += 1; seen.add(net)
+            k = "seq" if drv[net].endswith(("/Q", "/QN")) else "comb"; sa[k][0] += a; sa[k][1] += 1
         elif net in inputs and net != "clk":
             o.write(f"set_power_activity -input_ports [get_ports {{{net}}}] -activity {a:.5f} -duty {d:.4f}\n"); nin += 1
 print(f"act_tcl: {ncell:,} cells, {len(drv):,} driven net bits; annotated {nset:,} cell output pins ({100 * nset / max(1, len(drv)):.2f}%) "
-      f"and {nin:,} input port bits; window {cyc:,.0f} cycles")
+      f"and {nin:,} input port bits; window {cyc:,.0f} cycles; mean transitions per cycle: flip-flop outputs "
+      f"{sa['seq'][0] / max(1, sa['seq'][1]):.4f} ({sa['seq'][1]:,}), combinational outputs {sa['comb'][0] / max(1, sa['comb'][1]):.4f} ({sa['comb'][1]:,})")
