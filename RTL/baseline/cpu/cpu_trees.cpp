@@ -227,6 +227,50 @@ static void cc_ggm_avx2(const uint32_t* src, uint32_t* dst, size_t i0, size_t i1
   }
 }
 
+// BLAKE3-XOF GGM, impl 2: hand-written AVX2, 8 nodes in the 8 lanes. The message schedule is unrolled with constant word
+// indices, so the compiler keeps the three live message words (index lo / hi, level) in registers and drops the adds of
+// the 13 zero words, as a tuned CPU implementation would. Rotations right by 16 / 12 / 8 / 7.
+static inline __m256i rotr8v(__m256i v) {
+  const __m256i m = _mm256_setr_epi8(1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12, 1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12);
+  return _mm256_shuffle_epi8(v, m);
+}
+#define B3G(a, b, c, d, mx, my) a = _mm256_add_epi32(_mm256_add_epi32(a, b), mx); d = rot16v(_mm256_xor_si256(d, a)); c = _mm256_add_epi32(c, d); b = rotv(_mm256_xor_si256(b, c), 20); \
+                                a = _mm256_add_epi32(_mm256_add_epi32(a, b), my); d = rotr8v(_mm256_xor_si256(d, a)); c = _mm256_add_epi32(c, d); b = rotv(_mm256_xor_si256(b, c), 25);
+#define B3MW(k) ((k) == 0 ? m0 : (k) == 1 ? m1 : (k) == 2 ? m2 : z)
+#define B3R(s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15) \
+  B3G(v[0], v[4], v[8], v[12], B3MW(s0), B3MW(s1))  B3G(v[1], v[5], v[9], v[13], B3MW(s2), B3MW(s3)) \
+  B3G(v[2], v[6], v[10], v[14], B3MW(s4), B3MW(s5)) B3G(v[3], v[7], v[11], v[15], B3MW(s6), B3MW(s7)) \
+  B3G(v[0], v[5], v[10], v[15], B3MW(s8), B3MW(s9)) B3G(v[1], v[6], v[11], v[12], B3MW(s10), B3MW(s11)) \
+  B3G(v[2], v[7], v[8], v[13], B3MW(s12), B3MW(s13)) B3G(v[3], v[4], v[9], v[14], B3MW(s14), B3MW(s15))
+static void b3_ggm_avx2(const uint32_t* src, uint32_t* dst, size_t i0, size_t i1, uint32_t level) {
+  alignas(32) uint32_t tail[16 * 8];
+  for (size_t i = i0; i < i1; i += 8) {
+    size_t k = std::min<size_t>(8, i1 - i);
+    __m256i cv[8];
+    for (size_t j = 0; j < 8; j++) cv[j] = _mm256_loadu_si256((const __m256i*)(src + 8 * (i + (j < k ? j : 0))));
+    transpose8(cv);                                     // cv[w] = word w of the 8 seeds (the key)
+    const __m256i z = _mm256_setzero_si256();
+    const __m256i m0 = _mm256_add_epi32(_mm256_set1_epi32((int)(uint32_t)i), _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7));
+    const __m256i m1 = _mm256_set1_epi32((int)(uint32_t)((uint64_t)i >> 32)), m2 = _mm256_set1_epi32((int)level);
+    __m256i v[16] = {cv[0], cv[1], cv[2], cv[3], cv[4], cv[5], cv[6], cv[7],
+                     _mm256_set1_epi32(0x6A09E667), _mm256_set1_epi32(0xBB67AE85), _mm256_set1_epi32(0x3C6EF372), _mm256_set1_epi32(0xA54FF53A),
+                     z, z, _mm256_set1_epi32(64), _mm256_set1_epi32(F_KEYED | F_START | F_END | F_ROOT)};
+    B3R(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+    B3R(2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8)
+    B3R(3, 4, 10, 12, 13, 2, 7, 14, 6, 5, 9, 0, 11, 15, 8, 1)
+    B3R(10, 7, 12, 9, 14, 3, 13, 15, 4, 0, 11, 2, 5, 8, 1, 6)
+    B3R(12, 13, 9, 11, 15, 10, 14, 8, 7, 2, 5, 3, 0, 1, 6, 4)
+    B3R(9, 14, 11, 5, 8, 12, 15, 1, 13, 3, 0, 10, 2, 6, 4, 7)
+    B3R(11, 15, 5, 0, 1, 9, 8, 6, 14, 10, 2, 12, 3, 4, 7, 13)
+    __m256i x[16];                                      // XOF output: words 0..7 = v[w] ^ v[w + 8], 8..15 = v[w + 8] ^ key[w]
+    for (int w = 0; w < 8; w++) { x[w] = _mm256_xor_si256(v[w], v[w + 8]); x[w + 8] = _mm256_xor_si256(v[w + 8], cv[w]); }
+    transpose8(x); transpose8(x + 8);
+    uint32_t* o = (k == 8) ? dst + 16 * i : tail;
+    for (int j = 0; j < 8; j++) { _mm256_storeu_si256((__m256i*)(o + 16 * j), x[j]); _mm256_storeu_si256((__m256i*)(o + 16 * j + 8), x[8 + j]); }
+    if (k < 8) memcpy(dst + 16 * i, tail, k * 64);
+  }
+}
+
 // ---------------- Monolith-31 ----------------
 static inline uint32_t fold62(uint64_t v) {
   uint64_t r = (v & M31P) + (v >> 31);
@@ -302,7 +346,7 @@ static void merkle_level(int kind, int impl, const uint32_t* src, uint32_t* dst,
 }
 static void ggm_level(int kind, int impl, const uint32_t* src, uint32_t* dst, size_t m, uint32_t level) {
   POOL.par(m, [&](size_t a, size_t b) {
-    if (kind == 2) { if (impl == 1) b3_ggm_simd(src, dst, a, b, level); else b3_ggm_official(src, dst, a, b, level); }
+    if (kind == 2) { if (impl == 2) b3_ggm_avx2(src, dst, a, b, level); else if (impl == 1) b3_ggm_simd(src, dst, a, b, level); else b3_ggm_official(src, dst, a, b, level); }
     else { if (impl == 2) cc_ggm_avx2(src, dst, a, b, level); else if (impl == 1) cc_ggm_simd(src, dst, a, b, level); else cc_ggm_scalar(src, dst, a, b, level); }
   });
 }

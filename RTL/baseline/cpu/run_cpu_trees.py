@@ -1,10 +1,10 @@
-"""run_cpu_trees.py - CPU baselines for the unit's four tree workloads (i7-12700K): correctness against the Python
-models of dse/TOP/verify (the framings of compile_tree.py), then ns/node for 2^10..2^22 on 1 and 20 threads.
+"""run_cpu_trees.py - CPU baselines for the unit's four tree workloads: correctness against the Python
+models of dse/TOP/verify (the framings of compile_tree.py), then ns/node for 2^10..2^22 on 1, physical-core and all hardware threads.
     python run_cpu_trees.py [max_log2]          -> RESULTS_CPU_TREES.md
 Implementations
   BLAKE3 Merkle     official BLAKE3 C 1.8.2: blake3_hash_many on the parents of a level (AVX2, 8 parents per call)
-  BLAKE3-XOF GGM    official BLAKE3 C 1.8.2: blake3_compress_xof per node (SSE4.1)  |  ours: 8-way SoA (AVX2)
-  ChaCha20 GGM      ours: scalar block per node                                    |  ours: 8-way SoA (AVX2)
+  BLAKE3-XOF GGM    official BLAKE3 C 1.8.2: blake3_compress_xof per node (SSE4.1)  |  ours: 8-way SoA  |  ours: AVX2 intrinsics
+  ChaCha20 GGM      ours: scalar block per node  |  ours: 8-way SoA  |  ours: AVX2 intrinsics
   Monolith-31       Plonky3 p3-monolith 0.8.0 (Rust, rayon)  |  ours: scalar C++  |  ours: 8-way SoA (AVX2)
 """
 import ctypes, os, random, sys, time
@@ -71,7 +71,7 @@ o = (ctypes.c_uint32 * 16)(); p3.p3_mono_perm(A(KAT_IN), o); ok_p3 = list(o) == 
 o2 = (ctypes.c_uint32 * 16)(); cpu.cpu_mono_perm(A(KAT_IN), o2); ok_c = list(o2) == KAT
 out(f"- Monolith-31 permutation of [0..15] = reference test vector (Plonky3 KAT): Plonky3 {'OK' if ok_p3 else 'FAIL'}, our C++ {'OK' if ok_c else 'FAIL'}, Python model {'OK' if mono(KAT_IN) == KAT else 'FAIL'}")
 rng = random.Random(7); allok = ok_p3 and ok_c
-IMPLS = {1: [(0, "official BLAKE3 C, hash_many")], 2: [(0, "official BLAKE3 C, compress_xof"), (1, "ours, 8-way SoA")],
+IMPLS = {1: [(0, "official BLAKE3 C, hash_many")], 2: [(0, "official BLAKE3 C, compress_xof"), (1, "ours, 8-way SoA"), (2, "ours, AVX2 intrinsics")],
          3: [(0, "ours, scalar"), (1, "ours, 8-way SoA"), (2, "ours, AVX2 intrinsics")], 4: [("p3", "Plonky3 p3-monolith 0.8.0"), (0, "ours, scalar"), (1, "ours, 8-way SoA")],
          5: [("p3p", "Plonky3 p3-mersenne-31 Poseidon2 0.8.0")]}
 NAME = {1: "BLAKE3 Merkle", 2: "BLAKE3-XOF GGM", 3: "ChaCha20 GGM", 4: "Monolith-31 Merkle", 5: "Poseidon2-M31 Merkle"}
@@ -102,8 +102,8 @@ out(f"- every implementation, Merkle roots of 2^1 / 2^6 / 2^9 leaves and all GGM
 # ---------------- timing ----------------
 out("## ns per node (lower is better) and Mnodes/s")
 out("")
-TL = [1, 16, THREADS]
-out("| tree | size | implementation | 1 thread ns/node | 16 threads ns/node | %d threads ns/node | best Mnodes/s (threads) |" % THREADS)
+TL = [1, max(1, THREADS // 2), THREADS]                     # 1 thread, one per physical core, all hardware threads
+out("| tree | size | implementation | 1 thread ns/node | %d threads ns/node | %d threads ns/node | best Mnodes/s (threads) |" % (TL[1], TL[2]))
 out("|---|---:|---|---:|---:|---:|---:|")
 REPS = {10: 400, 14: 40, 18: 4, 22: 1}
 best = {}
@@ -126,7 +126,7 @@ for kind in ONLY:
             k = (kind, L)
             if k not in best or res[1] < best[k][0]: best[k] = (res[1], nm, res[0])
 cpu.cpu_stop()
-out("\n## Best CPU implementation per tree (best of 1 / 16 / %d threads)\n" % THREADS)
+out("\n## Best CPU implementation per tree (best of 1 / %d / %d threads)\n" % (TL[1], TL[2]))
 out("| tree | size | best implementation | ns/node | Mnodes/s | tree time us |")
 out("|---|---:|---|---:|---:|---:|")
 for (kind, L), (ns, nm, ns1) in sorted(best.items()):
