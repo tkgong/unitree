@@ -39,7 +39,7 @@ for p in "$@"; do
   T0=$(( 43 * 500 + FROM * 1000 )); T1=$(( 43 * 500 + TO * 1000 ))
   # 2. gate-level simulation of the whole run, checked against the RTL's outputs
   /usr/bin/time -a -o $WK/time_gl.txt -f "yosys sim $T $p: %e s, %M KB" \
-  yosys -q -l $WK/sim_${T}_$p.log -p "read_liberty -ignore_miss_func $LIB; read_verilog $WK/${T}_gl.v; hierarchy -top unit18_$T; flatten; opt_clean; sim -r $WK/ports_${T}_$p.fst -scope TOP -sim-cmp -fst $WK/gl_${T}_$p.fst -q" \
+  yosys -q -l $WK/sim_${T}_$p.log -p "read_liberty -ignore_miss_func $LIB; read_verilog $WK/${T}_gl.v; hierarchy -top unit18_$T; flatten; opt_clean; sim -r $WK/ports_${T}_$p.fst -scope TOP -zinit -sim-cmp -fst $WK/gl_${T}_$p.fst -q" \
       > /dev/null 2>&1; echo "yosys sim exit $? ($(grep -ciE 'mismatch|error' $WK/sim_${T}_$p.log) mismatch / error lines)" >> $O
   # 3. the window as VCD, OpenSTA
   $OSS/fst2vcd $WK/gl_${T}_$p.fst 2> /dev/null | awk -v T0=$T0 -v T1=$T1 -f vcd_window.awk > $WK/pw_${T}_$p.vcd
