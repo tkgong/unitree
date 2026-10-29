@@ -36,4 +36,4 @@ sat -verify -prove trigger 0 mp
 sat -verify -prove trigger 0 ml
 EOF
 yosys -q -l ks_equiv.log ks_equiv.ys > /dev/null 2>&1
-grep -E "SUCCESS|FAIL|ERROR|proof" ks_equiv.log | head
+grep -E "SUCCESS|FAIL|ERROR" ks_equiv.log

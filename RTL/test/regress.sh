@@ -9,7 +9,8 @@ R=$(cd "$(dirname "$0")/.." && pwd); . "$R/env.sh"
 OUT=${OUT:-$R/test/regress}; mkdir -p $OUT
 sh $R/test/ks_equiv.sh > $OUT/ks_equiv.log 2>&1
 for nl in 0 216; do sh $R/test/run_dp.sh $nl > $OUT/dp_$nl.log 2>&1; KS45=1 sh $R/test/run_dp.sh $nl > $OUT/dp_${nl}_ks45.log 2>&1; done
-for t in $TOPS; do (sh $R/test/run_tb.sh $t > $OUT/tb_$t.log 2>&1; KS45=1 sh $R/test/run_tb.sh $t > $OUT/tb_${t}_ks45.log 2>&1) & done; wait
+# one top at a time: a Verilator build of a top with the KS45 cells takes 20-42 GB (dana336 has 62 GB)
+for t in $TOPS; do sh $R/test/run_tb.sh $t > $OUT/tb_$t.log 2>&1; KS45=1 sh $R/test/run_tb.sh $t > $OUT/tb_${t}_ks45.log 2>&1; done
 for t in $TOPS; do
   (WORK=work_reg MODES=flat KEEPALU=1 KS45=1 NET=1 ABC_SPEED=1 ADDER=kogge-stone ABC_D=600 sh $R/syn/syn.sh $t > $OUT/syn_$t.log 2>&1
    WORK=work_reg sh $R/syn/repair.sh $t > $OUT/repair_$t.log 2>&1

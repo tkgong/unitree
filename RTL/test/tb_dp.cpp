@@ -3,6 +3,7 @@
 //   Vmono_dp18 <vectors>
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <sstream>
@@ -23,7 +24,8 @@ int main(int argc, char** argv) {
     Vmono_dp18* dut = new Vmono_dp18;
     dut->clk = 0; dut->rst = 1; dut->mono = 0; dut->r = 0;
     for (int i = 0; i < 16; i++) dut->x[i] = 0;
-    dut->ea = 0; dut->eb = 0;                                    // NL = 0: one 32-bit word each
+    std::memset(&dut->ea, 0, sizeof(dut->ea));                   // NL = 0: one 32-bit word; NL > 0: NL words (VlWide)
+    std::memset(&dut->eb, 0, sizeof(dut->eb));
     dut->eval(); dut->clk = 1; dut->eval(); dut->clk = 0; dut->rst = 0; dut->eval();
     long bad = 0, n = (long)vec.size();
     for (long c = 0; c < n + 18; c++) {
