@@ -35,6 +35,17 @@ Files:
 layout's open batch is also timed on the HBM2 model. The run prints the HBM2 commands, row-hit rate, bytes per activation,
 read latency (send to data on chip) and how long the write buffers took to drain after the last cycle.
 
+## The benchmark GPU's memory: GDDR6 (`gddr6.yaml`, `hbm.py` GDDR6, `compile_tree.py gddr=<channels>`)
+
+The CPU / GPU baselines run on dana336's RTX 3070: 8 GB GDDR6, 8 x 8 Gb x32 chips = 16 channels x 16 bit at 14 Gb/s =
+448 GB/s. The unit is compared at that memory, not an HBM stack: `gddr=<channels>` runs the Ramulator2 GDDR6 device model
+with the RTX 3070's organization and clock (CK 1.75 GHz, ticked 7 times per 4 unit cycles; 32 B per access = BL16 x 16
+bit, 2 CK per access per channel = 28 B/cycle per channel; 2 KB rows; 4 bank groups x 4 banks; JEDEC GDDR6 timings, tRFC
+120 ns, tREFI 1.9 us; FR-FCFS, all-bank refresh, RoBaRaCoCh), `gddr=16` = the whole 448 GB/s for one core, `gddr=2` = one
+core's share when 8 cores split the 16 channels (a static partition: every core owns 2 channels, no sharing between cores).
+Calibration (`bench_hbm.py 2 16 --gddr`): sequential read 79-82% of the peak, sequential write 83-88%, row hit 98%, read
+latency 60 cycles average (the HBM2 model: 80%, 50 cycles). `results/logs18/*_gddr_<channels>.log` are the runs.
+
 ## Run (Linux; dana336)
 
 ```bash
