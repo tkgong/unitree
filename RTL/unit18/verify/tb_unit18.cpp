@@ -52,14 +52,9 @@ int main(int argc, char** argv) {
         if (!sf) return;
         fprintf(sf, "%d %d %d %d %d %d %x %x %llx", (int)dut->clk, (int)dut->rst, (int)dut->mono, (int)dut->mono2, (int)dut->htap,
                 (int)dut->blake, (unsigned)dut->r, (unsigned)dut->r2, (unsigned long long)dut->rg);
-        hexv(sf, (const uint32_t*)&dut->lin[0], NWI); hexv(sf, (const uint32_t*)&dut->lout[0], NWI); fputc('
-', sf);
+        hexv(sf, (const uint32_t*)&dut->lin[0], NWI); hexv(sf, (const uint32_t*)&dut->lout[0], NWI); fputc(10, sf);
     };
-#if VM_TRACE
     auto ev = [&]() { ev0(); stim(); };
-#else
-    auto ev = [&]() { ev0(); stim(); };
-#endif
     dut->clk = 0; dut->rst = 1; ev(); dut->clk = 1; ev(); dut->clk = 0; dut->rst = 0; ev();
     // the HLS unit starts from zero registers: run zero inputs through every pipeline first (18 cycles)
     for (int i = 0; i < 2 * 20 - 1; i++) { dut->clk = !dut->clk; ev(); }
