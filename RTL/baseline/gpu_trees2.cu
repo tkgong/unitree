@@ -101,9 +101,10 @@ __device__ __forceinline__ void merkle_node(const uint32_t* in, uint32_t* out, u
 {
   uint32_t x[16];
 #pragma unroll
-  for (int k = 0; k < 4; k++) { uint4 q = ((const uint4*)in)[k]; x[4*k] = q.x; x[4*k+1] = q.y; x[4*k+2] = q.z; x[4*k+3] = q.w; }   // 16-byte loads
+  for (int k = 0; k < 16; k++) x[k] = in[k];
   if (K == 1) { uint32_t o[16]; b3_compress(B3IV, x, 64, flags, o);
-    ((uint4*)out)[0] = make_uint4(o[0], o[1], o[2], o[3]); ((uint4*)out)[1] = make_uint4(o[4], o[5], o[6], o[7]); }
+#pragma unroll
+    for (int k = 0; k < 8; k++) out[k] = o[k]; }
   else if (K == 5) { pos2_perm(x);
 #pragma unroll
     for (int k = 0; k < 8; k++) out[k] = x[k]; }
@@ -117,12 +118,12 @@ __device__ __forceinline__ void ggm_node(const uint32_t* seed_in, uint64_t idx, 
 {
   uint32_t seed[8], o[16];
 #pragma unroll
-  for (int k = 0; k < 2; k++) { uint4 q = ((const uint4*)seed_in)[k]; seed[4*k] = q.x; seed[4*k+1] = q.y; seed[4*k+2] = q.z; seed[4*k+3] = q.w; }
+  for (int k = 0; k < 8; k++) seed[k] = seed_in[k];
   if (K == 2) { uint32_t blk[16] = {(uint32_t)idx, (uint32_t)(idx >> 32), level, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
                 b3_compress(seed, blk, 64, 16 | 1 | 2 | 8, o); }
   else { uint32_t nonce[3] = {(uint32_t)(idx >> 32), level, 0}; chacha_block(seed, (uint32_t)idx, nonce, o); }
 #pragma unroll
-  for (int k = 0; k < 4; k++) ((uint4*)out)[k] = make_uint4(o[4*k], o[4*k+1], o[4*k+2], o[4*k+3]);   // 16-byte stores (coalesced)
+  for (int k = 0; k < 16; k++) out[k] = o[k];
 }
 
 // ---------------- per-level kernels over all T trees (concatenated layout) ----------------
@@ -145,7 +146,7 @@ __global__ void ggm_level_k(const uint32_t* __restrict__ in, uint32_t* __restric
 template <int K, bool OPT>
 __global__ void __launch_bounds__(FUSE) merkle_top_k(const uint32_t* __restrict__ in, uint32_t* __restrict__ roots, uint32_t m)
 {
-  __shared__ __align__(16) uint32_t s[2][2 * FUSE * 8];
+  __shared__ uint32_t s[2][2 * FUSE * 8];
   const uint32_t t = blockIdx.x, tid = threadIdx.x;
   for (uint32_t w = tid; w < 16 * m; w += blockDim.x) s[0][w] = in[(size_t)16 * m * t + w];
   __syncthreads();
@@ -162,7 +163,7 @@ __global__ void __launch_bounds__(FUSE) merkle_top_k(const uint32_t* __restrict_
 template <int K>
 __global__ void __launch_bounds__(FUSE) ggm_head_k(const uint32_t* __restrict__ seeds, uint32_t* __restrict__ out, int H)
 {
-  __shared__ __align__(16) uint32_t s[2][2 * FUSE * 8];
+  __shared__ uint32_t s[2][2 * FUSE * 8];
   const uint32_t t = blockIdx.x, tid = threadIdx.x;
   if (tid < 8) s[0][tid] = seeds[8 * t + tid];
   __syncthreads();
