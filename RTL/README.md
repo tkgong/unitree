@@ -33,6 +33,7 @@ datapaths, fully pipelined (II = 1). The programs come from the software compile
 | `alu_bar_chunk #(W)`, `alu_bar31` | Monolith Bars S-box (8 / 8 / 8 / 7-bit chunks) |
 | `alu_mul31_en_p2` | 31 x 31 -> 62 multiplier, two pipeline stages, 0 when `en` = 0 |
 | `alu_xor` | 64-bit xor |
+| `alu_add_ks45 #(W)` | the adder as a structural Kogge-Stone of Nangate45 cells (7 gates for 32 bits); `alu_add` and `alu_addp #(32)` instantiate it under `` `define KS45 `` (the timing flow); `nangate45_cells.sv` models the cells for Verilator |
 
 ## Verification (dana336, Verilator)
 
@@ -50,13 +51,22 @@ ties `blake` for the attribution runs). Current result (`unit18/syn/work/report.
 
 | sharing: unit18_shared vs unit18_mono + unit18_chacha + unit18_blake3 | separate um^2 | shared um^2 | saved |
 |---|---:|---:|---:|
-| logic only (all non-flip-flop cells, flat) | 627,189 | 571,297 | 8.9% |
-| ALU instances only (hier) | 680,157 | 533,724 | 21.5% |
-| registers | 1,435,382 | 864,520 | 39.8% |
-| total | 2,062,572 | 1,435,817 | 30.4% |
+| logic only (all non-flip-flop cells, flat) | 627,707 | 574,604 | 8.5% |
+| ALU instances only (hier) | 692,744 | 546,216 | 21.2% |
+| registers | 1,443,463 | 872,972 | 39.5% |
+| total | 2,071,170 | 1,447,576 | 30.1% |
 
-Sub-blocks (flat): one datapath natural 297,177 um^2 / lent 324,137 (the 216 lend selects); one 9-block ARX group
-private 451,533 / lent 410,654.
+Sub-blocks (flat, before the timing restructuring): one datapath natural 297,177 um^2 / lent 324,137 (the 216 lend
+selects); one 9-block ARX group private 451,533 / lent 410,654.
+
+## Timing (dana336, Yosys + ABC + OpenROAD repair, Nangate45, 1 ns clock, pre-placement)
+
+All four tops close at 1 GHz (WNS 0.00 after `repair_timing`): `unit18/syn/work/timing.md` has the runs, the worst paths and
+the flow (`syn.sh` KEEPALU=1 KS45=1 ABC_SPEED=1 ADDER=kogge-stone ABC_D=600, then `repair.sh`). Every level is one carry chain
+(`alu_addf`, `alu_csa31`), the ARX / lent adders are the structural `alu_add_ks45` (proven equal to a + b by
+`unit18/verify/ks_equiv.sh`, Yosys miter + SAT), the step controls travel as 11 registered copies per block. Area of the
+timing-closed netlists: shared 1,898,076 um^2, mono 990,478, chacha 890,724, blake3 1,015,758 (sharing on them: logic
+31.8%, registers 37.0%, total 34.5%).
 
 The previous designs (the HLS-generated bz3 unit in `RTL/pe`, its accelerator shell `RTL/fsm`, the per-ALU ORFS runs
 `RTL/syn`, the standalone ALU testbench `RTL/verify` and the ALUs only those used) were removed on 2026-10-28; they are in
