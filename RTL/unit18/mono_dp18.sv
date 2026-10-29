@@ -34,8 +34,16 @@ module mono_dp18 #(
     // ---- mono / r travel with the state (mpc: NMC copies of the issue bit, copy c serves lent adders c*MPR..) ----
     logic [D:1] mpc [0:NMC-1];
     logic [8:0] rr [1:D];
-    (* keep *) always_ff @(posedge clk) begin                 // keep: the copies are identical, no opt_merge
-        for (int c = 0; c < NMC; c++) mpc[c] <= rst ? '0 : {mpc[c][D-1:1], mono};
+    logic [NMC-1:0] monoc;                                   // the issue bit per copy
+`ifdef KS45                                               // timing flow: a buffer cell per copy keeps the copies structurally
+    generate for (genvar c = 0; c < NMC; c++) begin : g_mc    // distinct, so that opt_merge cannot fold them back into one
+        BUF_X1 u_m (.A(mono), .Z(monoc[c]));
+    end endgenerate
+`else
+    assign monoc = {NMC{mono}};
+`endif
+    always_ff @(posedge clk) begin
+        for (int c = 0; c < NMC; c++) mpc[c] <= rst ? '0 : {mpc[c][D-1:1], monoc[c]};
         rr[1] <= r;
         for (int k = 2; k <= D; k++) rr[k] <= rr[k - 1];
     end
