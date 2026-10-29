@@ -2,9 +2,10 @@
 // (22: ChaCha20 / BLAKE3 with the chaining-value lanes, 18: ChaCha20 only) enter together from the input vector and pass
 // six pipeline levels, one ARX step per level: step s reads the block lanes X_s (s = 1: the input; else the level s-1
 // register), axn_ops forms the four adds' operands, the adders return the sums, axn_fin forms the step's lanes, and the
-// level register takes them on the lanes the step writes (WMASK) and X_s elsewhere. The traversal's round index r and
-// blake travel with the group, registered per block (level 1 uses the inputs, level s the copies registered at level
-// s-1: the selects they drive are the critical path, so no copy fans out beyond its block). Out: the level-6 register.
+// level register takes them on the lanes the step writes (WMASK) and X_s elsewhere. The controls the steps use (r[0], r[8],
+// blake of the traversal) travel with the group as NC = 11 copies per block (axn_step.sv: copy c serves lanes 2c, 2c+1),
+// registered per block and copy (level 1 uses the inputs, level s the copies registered at level s-1): the selects they
+// drive are the head of the critical path, so no copy fans out beyond ~2 lanes of selects. Out: the level-6 register.
 // Latency 6 (the program's ring of 7 slots re-issues the group).
 // PRIV = 1: each block step has its own four alu_addp (the natural units); PRIV = 0: the 4 x NBK x 6 adds go out on
 // ea / eb and come back on ey (the shared unit lends them from a Monolith datapath).
@@ -34,20 +35,23 @@ module arx_group #(
         endcase
     endfunction
     wire  [NBK*BL*64-1:0] R [0:6];                           // R[0] = the input, R[s] = the level-s register
-    wire  [8:0]           ar [0:5][0:NBK-1];                 // r / blake at level s for block b
-    wire                  bk [0:5][0:NBK-1];
+    localparam int NC = 11;                                  // control copies per block (axn_step.sv)
+    wire  [NC-1:0]        r0 [0:5][0:NBK-1];                 // r[0] / r[8] / blake copies at level s for block b
+    wire  [NC-1:0]        r8 [0:5][0:NBK-1];
+    wire  [NC-1:0]        bk [0:5][0:NBK-1];
     assign R[0] = x;
     generate
         for (genvar b = 0; b < NBK; b++) begin : g_ctl0
-            assign ar[0][b] = r;
-            assign bk[0][b] = blake;
+            assign r0[0][b] = {NC{r[0]}};
+            assign r8[0][b] = {NC{r[8]}};
+            assign bk[0][b] = {NC{blake}};
         end
         for (genvar s = 1; s <= 5; s++) begin : g_ctl
             for (genvar b = 0; b < NBK; b++) begin : g_blk
-                logic [8:0] ar_q;
-                logic       bk_q;
-                (* keep *) always_ff @(posedge clk) begin ar_q <= ar[s - 1][b]; bk_q <= bk[s - 1][b]; end   // keep: no opt_merge of the copies
-                assign ar[s][b] = ar_q;
+                logic [NC-1:0] r0_q, r8_q, bk_q;
+                (* keep *) always_ff @(posedge clk) begin r0_q <= r0[s - 1][b]; r8_q <= r8[s - 1][b]; bk_q <= bk[s - 1][b]; end   // keep: no opt_merge of the copies
+                assign r0[s][b] = r0_q;
+                assign r8[s][b] = r8_q;
                 assign bk[s][b] = bk_q;
             end
         end
@@ -64,7 +68,7 @@ module arx_group #(
                 end else begin : g_18
                     assign sv = {{((22 - BL)*64){1'b0}}, R[s - 1][b*BL*64 +: BL*64]};
                 end
-                axn_ops #(.STEP(s), .CP(CP)) u_ops (.S(sv), .r(ar[s - 1][b]), .blake(bk[s - 1][b]), .EA(a), .EB(bb));
+                axn_ops #(.STEP(s), .CP(CP)) u_ops (.S(sv), .r0(r0[s - 1][b]), .r8(r8[s - 1][b]), .bk(bk[s - 1][b]), .EA(a), .EB(bb));
                 if (PRIV) begin : g_priv
                     for (genvar q = 0; q < 4; q++) begin : g_add
                         alu_addp #(.W(32)) u_add (.a(a[q*32 +: 32]), .b(bb[q*32 +: 32]), .y(sum[q*32 +: 32]));
@@ -76,7 +80,7 @@ module arx_group #(
                     assign eb[Q*32 +: 128] = bb;
                     assign sum = ey[Q*32 +: 128];
                 end
-                axn_fin #(.STEP(s), .CP(CP)) u_fin (.S(sv), .r(ar[s - 1][b]), .blake(bk[s - 1][b]), .EY(sum), .M(m));
+                axn_fin #(.STEP(s), .CP(CP)) u_fin (.S(sv), .r0(r0[s - 1][b]), .r8(r8[s - 1][b]), .bk(bk[s - 1][b]), .EY(sum), .M(m));
                 for (genvar l = 0; l < BL; l++) begin : g_lane
                     if (wmask(s, l)) begin : g_w
                         assign nxt[(b*BL + l)*64 +: 64] = m[l*64 +: 64];

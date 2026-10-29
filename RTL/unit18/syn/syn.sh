@@ -9,7 +9,8 @@
 # library timing: the driving cell BUF_X1 and load 3.898 fF of the ORFS nangate45 config) instead of Yosys's default abc script.
 # HFLAT=1 (hier mode): every module (each ALU, the ARX step operand / result logic) is mapped by ABC on its own, then the
 # netlist is flattened and written as $WORK/<top>_flat.v (+ <top>_flat.txt): the ALUs keep the depth they get standalone
-# (ABC on the flat design maps a 32-bit add at 2x the standalone depth).
+# (ABC on the flat design maps a 32-bit add at 2x the standalone depth). KEEPALU=1 (flat mode): only the alu_* modules stay
+# hierarchical through ABC (mapped standalone), everything else is flattened into the top before mapping; flattened after.
 #   sh syn.sh [top ...]    (shared mono chacha blake3)
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
@@ -22,15 +23,22 @@ set_load 3.898
 ' > $WK/abc.constr; ABCS="-script $ORFS/scripts/abc_speed.script -constr $WK/abc.constr"; fi
 for t in ${*:-shared mono chacha blake3}; do
   for mode in ${MODES:-flat hier}; do
-    if [ $mode = flat ]; then FL="-flatten"; else FL=""; fi
+    if [ $mode = flat ] && [ -z "$KEEPALU" ]; then FL="-flatten"; else FL=""; fi
+    if [ $mode = flat ] && [ -n "$KEEPALU" ]; then KA1="setattr -mod -set keep_hierarchy 1 *alu_*
+flatten
+opt_clean"; KA2="setattr -mod -unset keep_hierarchy *alu_*
+flatten"; else KA1=""; KA2=""; fi
     cat > $WK/$t.$mode.ys <<EOF
 read_verilog -sv -I.. $SRC ../unit18_$t.sv
 hierarchy -top unit18_$t
 synth -top unit18_$t $FL ${ADDER:+-run :fine}
 ${ADDER:+techmap -map +/techmap.v -map +/choices/$ADDER.v}
 ${ADDER:+synth -top unit18_$t $FL -run fine:}
+$KA1
 dfflibmap -liberty $LIB
 abc ${ABC_D:+-D $ABC_D} $ABCS -liberty $LIB
+opt_clean -purge
+$KA2
 opt_clean -purge
 tee -o $WK/${t}_$mode.txt stat -liberty $LIB
 EOF
