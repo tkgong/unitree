@@ -33,3 +33,4 @@ RTL/test/ks_equiv.ys
 RTL/test/ks_equiv.log
 RTL/benchmark/power/vcd_act
 .vscode/
+RTL/test/regress/
