@@ -4,7 +4,8 @@
 // the HLS unit's (the DLL's) values: ARX lanes exactly, Monolith lanes mod p (the datapaths may hold p or 0).
 //   Vtop <trace>
 // Built with --trace (power.sh: the gate-level netlist): VCD=<file> VCD_FROM=<cycle> VCD_TO=<cycle> dump every signal in that
-// window of program cycles (clock period 1000 ps, rising edge at cycle x 1000) for OpenSTA read_vcd.
+// window of program cycles (clock period 1000 ps, time 0 at VCD_FROM: OpenSTA read_vcd takes the VCD's end time over the
+// number of clock edges as the period).
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -47,16 +48,16 @@ int main(int argc, char** argv) {
 #if VM_TRACE
         bool on = tfp && cyc >= vfrom && cyc < vto;
         if (on && !tfp->isOpen()) tfp->open(vf);
-        if (on) tfp->dump((uint64_t)cyc * 1000);                       // clock low, inputs of this cycle applied
+        if (on) tfp->dump((uint64_t)(cyc - vfrom) * 1000);                       // clock low, inputs of this cycle applied
 #endif
         dut->clk = 1; dut->eval();
 #if VM_TRACE
-        if (on) tfp->dump((uint64_t)cyc * 1000 + 500);                 // after the rising edge
+        if (on) tfp->dump((uint64_t)(cyc - vfrom) * 1000 + 500);                 // after the rising edge
 #endif
         dut->clk = 0; dut->eval();
         cyc++;
 #if VM_TRACE
-        if (tfp && tfp->isOpen() && cyc == vto) { tfp->dump((uint64_t)cyc * 1000); tfp->close(); }
+        if (tfp && tfp->isOpen() && cyc == vto) { tfp->dump((uint64_t)(cyc - vfrom) * 1000); tfp->close(); }
 #endif
     };
     while (std::getline(f, line)) {

@@ -1,7 +1,8 @@
 #!/bin/sh
 # power_vcd.sh - power of a timing-closed netlist with the switching activity MEASURED on a real program, not assumed:
-#   1. the repaired netlist $WORK/<top>_rep.v with every internal net renamed to a short name (Yosys rename -hide /
-#      -enumerate; the ports keep theirs), so that the simulation's VCD and OpenSTA see the same net names;
+#   1. the repaired netlist $WORK/<top>_rep.v with every internal net renamed to a short name n<k> (Yosys rename -hide /
+#      -enumerate; the ports keep theirs), so that the simulation's VCD and OpenSTA see the same net names (no leading
+#      underscore: Verilator does not trace those);
 #   2. Verilator gate-level (zero-delay) simulation of that netlist with the Nangate45 cell models Yosys writes from the
 #      liberty (read_liberty: the cells' functions and flip-flops), driven by tb_unit18.cpp with a compiled program's trace
 #      (compile_tree.py trace=): closed loop, every node finish checked against the HLS unit, so the netlist is verified too;
@@ -18,7 +19,7 @@ TR=${TRDIR:-../verify/trp}
 if [ ! -f $WK/${T}_gl.v ]; then
   TIE=""; grep -q "(zero_)" $WK/${T}_rep.v && TIE="connect -set zero_ 1'b0;"     # OpenROAD's tie-low net (written undeclared)
   grep -q "(one_)" $WK/${T}_rep.v && TIE="$TIE connect -set one_ 1'b1;"
-  yosys -q -l $WK/${T}_gl.log -p "read_liberty -lib $LIB; read_verilog $WK/${T}_rep.v; hierarchy -top unit18_$T; $TIE rename -hide w:* c:*; rename -enumerate; write_verilog -noattr -noexpr $WK/${T}_gl.v"
+  yosys -q -l $WK/${T}_gl.log -p "read_liberty -lib $LIB; read_verilog $WK/${T}_rep.v; hierarchy -top unit18_$T; $TIE rename -hide w:* c:*; rename -enumerate -pattern n%; write_verilog -noattr -noexpr $WK/${T}_gl.v"
 fi
 OBJ=$WK/obj_gl_$T
 if [ ! -x $OBJ/Vunit18_$T ]; then
