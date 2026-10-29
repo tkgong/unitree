@@ -44,32 +44,40 @@ bit, 2 CK per access per channel = 28 B/cycle per channel; 2 KB rows; 4 bank gro
 120 ns, tREFI 1.9 us; FR-FCFS, all-bank refresh, RoBaRaCoCh), `gddr=16` = the whole 448 GB/s for one core, `gddr=2` = one
 core's share when 8 cores split the 16 channels (a static partition: every core owns 2 channels, no sharing between cores).
 Calibration (`bench_hbm.py 2 16 --gddr`): sequential read 79-82% of the peak, sequential write 83-88%, row hit 98%, read
-latency 60 cycles average (the HBM2 model: 80%, 50 cycles). `results/logs18/*_gddr_<channels>.log` are the runs.
+latency 60 cycles average (the HBM2 model: 80%, 50 cycles); calibrated before the refresh fix (with refresh: 44.2 instead of 44.4 B/cycle sequential at 2 channels).
 
-Results (dana336, 2026-10-29; bz3s unit, 32 KB SRAM per core, every run `audit` OK and bit-exact; `results/logs18/*_gddr_*.log`):
+Results (dana336, 2026-10-29; bz3s unit, 32 KB SRAM per core, DRAM refresh on, every run `audit` OK and bit-exact;
+`sh memsim/run_gddr.sh` -> `results/logs18/*_gddr_*.log`):
 
-| program | gddr=1 (16 cores, 28 GB/s each) | gddr=2 (8 cores, 56 GB/s each) | gddr=4 (4 cores) | gddr=16 (1 core, all 448 GB/s) | HBM2 2 ch (64 GB/s) |
+| program | gddr=1 (16 cores, 28 GB/s each) | gddr=2 (8 cores, 56 GB/s each) | gddr=4 (4 cores) | gddr=16 (1 core, all 448 GB/s) | HBM2 2 ch (64 GB/s, no refresh) |
 |---|---:|---:|---:|---:|---:|
-| BLAKE3 Merkle 2^18 store=out | 380,872 (22.0 B/cycle) | 205,692 (40.8) | | 205,582 | 205,674 |
-| ChaCha20 GGM 2^18 store=out | 364,457 (23.0) | 205,707 (40.8) | | | 205,662 |
-| ChaCha20 GGM 2^18 store=k2 | | 233,209 (45.0) | 205,652 (51.0) | | 209,252 |
-| BLAKE3 GGM 2^18 store=out | | 205,684 (40.8) | | | 205,637 |
-| BLAKE3 GGM 2^18 store=k2 | | 233,367 (44.9) | 205,564 (51.0) | 205,569 | 209,280 |
+| BLAKE3 Merkle 2^18 store=out | 381,123 (22.0 B/cycle) | 206,390 (40.6) | | 205,582 | 205,674 |
+| ChaCha20 GGM 2^18 store=out | 366,433 (22.9) | 205,834 (40.8) | | | 205,662 |
+| ChaCha20 GGM 2^18 store=k2 | | 242,346 (43.3) | 205,652 (51.0) | | 209,252 |
+| BLAKE3 GGM 2^18 store=out | | 205,993 (40.7) | | | 205,637 |
+| BLAKE3 GGM 2^18 store=k2 | | 243,069 (43.1) | 205,546 (51.0) | 205,569 | 209,280 |
 | Monolith Merkle 2^16 store=all | | 231,345 (18.1) | | | 231,358 |
 | Monolith Merkle 2^18 store=out | | 919,735 (9.1) | | | 919,735 |
 
+- Refresh: Ramulator2's all-bank refresh took the rank count from a level GDDR6 / HBM2 do not have and never refreshed
+  (REFab 0 in every earlier log; fixed 2026-10-29 with the GDDR6 PREA scope and refresh-first in the controller). With it the
+  2-channel store=out runs take 0.06-0.34% more cycles (216 REFab each); the store=k2 runs at 2 channels +4% (233,2xx before).
+  The HBM2 column and the older HBM2 tables below were run without refresh.
 - Two GDDR6 channels per core (8 cores on the RTX 3070's 16 channels) run every store=out program and Monolith at the compute
-  bound (the same cycles as on the HBM2 model and the ideal pipe: 40.8 B/cycle of the 56 peak, 73%); the store=k2 GGM
-  variants (51 B/cycle needed) are memory-bound at 2 channels (+13%) and compute-bound at 4 (4 cores).
-- One channel per core (16 cores): memory-bound at 22-23 B/cycle of 28 (79-82% of the peak, the calibration's figure),
-  1.8x the cycles.
-- Latency: 64 cycles average read latency on the Merkle leaf stream (86 max), row hit 98%; the SRAM high-water does not
-  change (15-29 KB), 32 KB per core holds.
+  bound (40.6-40.8 B/cycle of the 56 peak, 73%); the store=k2 GGM variants (51 B/cycle needed) are memory-bound at 2 channels
+  (+18%) and compute-bound at 4 (4 cores).
+- One channel per core (16 cores): memory-bound at 22-23 B/cycle of 28 (79-82% of the peak), 1.8x the cycles.
+- Latency: 63 cycles average read latency on the Merkle leaf stream (265 max with refresh), row hit 98%; the SRAM high-water
+  stays at 4.6-28.8 KB, 32 KB per core holds.
+- Not modeled: where the per-cycle instruction stream comes from (one word per cycle; no DRAM or SRAM traffic is charged
+  for it), and the SRAM's access ports (only its capacity: the compute side needs 3.5 accesses of 32 B per cycle on
+  average plus 1.3 DRAM fills, 12-15 in the cycles where a ring group starts and finishes).
 
 ## Run (Linux; dana336)
 
 ```bash
-sh memsim/build_linux.sh                 # ~3.5 min: libramulator.so, ap_types, lz_16.so, lz3_16.so, check_axn ALL OK
+sh memsim/build_linux.sh                 # ~4 min: libramulator.so, ap_types, the unit models (lz_16, lz3_16, lz3s_16, natural units), check_axn ALL OK
+sh memsim/run_gddr.sh                    # the GDDR6 runs above (13 in parallel, ~15 min)
 python3 memsim/bench_hbm.py 1 2 4 8 --nbl 2 --nbl 4 --map RoBaRaCoCh --map MOP4CLXOR --md memsim/results/bench_hbm.md
 python3 memsim/sweep.py 14                # every run with audit and the bit-exact check
 cd dse/TOP && python3 ../../RTL/compiler/compile_tree.py verify/lz_16.so merkle blake3 16 sram=64 hbm=8 store=all audit open=1,64
