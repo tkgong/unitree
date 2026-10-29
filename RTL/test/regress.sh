@@ -21,7 +21,7 @@ for t in $TOPS; do WORK=work_area sh $R/syn/syn.sh $t > $OUT/area_syn_$t.log 2>&
 WORK=work_area python3 $R/benchmark/area/report.py --md $OUT/area.md > $OUT/area.log 2>&1
 echo "== summary"
 grep -h "SUCCESS\|FAIL" $OUT/ks_equiv.log | sort | uniq -c
-grep -H "SUMMARY" $OUT/dp_*.log | sed "s|.*/||"\|BAD\|OK" $OUT/dp_*.log | tail -n 4
+grep -H "SUMMARY" $OUT/dp_*.log | sed "s|.*/||"
 grep -H "SUMMARY" $OUT/tb_*.log | sed "s|.*/||"
 cat $OUT/sta_*.log $OUT/netlist_*.log
 grep -A6 "^| sharing" $OUT/area.md
