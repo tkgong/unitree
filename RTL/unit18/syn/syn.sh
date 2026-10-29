@@ -11,10 +11,13 @@
 # netlist is flattened and written as $WORK/<top>_flat.v (+ <top>_flat.txt): the ALUs keep the depth they get standalone
 # (ABC on the flat design maps a 32-bit add at 2x the standalone depth). KEEPALU=1 (flat mode): only the alu_* modules stay
 # hierarchical through ABC (mapped standalone), everything else is flattened into the top before mapping; flattened after.
+# KS45=1: the ARX / lent adders are the structural Nangate45 Kogge-Stone (alu_add_ks45.sv, `define KS45; the liberty cells
+# are read as blackboxes and kept). KEEPCTL=1: the replicated control registers (arx_group r0_q / r8_q / bk_q, mono_dp18
+# mpc) get the keep attribute on the $dff cells themselves, which is what stops opt_merge from merging the copies.
 #   sh syn.sh [top ...]    (shared mono chacha blake3)
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
-SRC="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_addf.sv ../../alu_csa31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv ../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../axn_step.sv"
+SRC="../../alu_add_ks45.sv ../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_addf.sv ../../alu_csa31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv ../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../axn_step.sv"
 WK=${WORK:-work}
 mkdir -p $WK
 ORFS=/home/dana336/eda/OpenROAD-flow-scripts/flow
@@ -29,8 +32,12 @@ flatten
 opt_clean"; KA2="setattr -mod -unset keep_hierarchy *alu_*
 flatten"; else KA1=""; KA2=""; fi
     cat > $WK/$t.$mode.ys <<EOF
-read_verilog -sv -I.. $SRC ../unit18_$t.sv
+${KS45:+read_liberty -lib $LIB}
+read_verilog -sv ${KS45:+-DKS45} -I.. $SRC ../unit18_$t.sv
 hierarchy -top unit18_$t
+${KEEPCTL:+proc}
+${KEEPCTL:+select -set ctl w:*r0_q* w:*r8_q* %u w:*bk_q* %u w:*mpc* %u %ci1 t:\$dff %i}
+${KEEPCTL:+setattr -set keep 1 @ctl}
 synth -top unit18_$t $FL ${ADDER:+-run :fine}
 ${ADDER:+techmap -map +/techmap.v -map +/choices/$ADDER.v}
 ${ADDER:+synth -top unit18_$t $FL -run fine:}

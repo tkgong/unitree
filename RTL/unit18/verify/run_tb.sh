@@ -2,7 +2,7 @@
 # run_tb.sh - Verilator (dana336): build each hand-written top and replay its programs' traces closed loop.
 #   sh run_tb.sh [top ...]         tops: shared mono chacha blake3 (default: all); traces in tr/<top>_*.tr
 cd "$(dirname "$0")"
-ALU="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_addf.sv ../../alu_csa31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv"
+ALU="${KS45:+-DKS45 ../../alu_add_ks45.sv ../../nangate45_cells.sv} ../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv ../../alu_fold31.sv ../../alu_addf.sv ../../alu_csa31.sv ../../alu_canon.sv ../../alu_bar_chunk.sv ../../alu_bar31.sv ../../alu_mul31_en_p2.sv ../../alu_xor.sv"
 SRC="../kara_pkg.sv ../mono_dp18.sv ../arx_group.sv ../axn_step.sv"
 for t in ${*:-shared mono chacha blake3}; do
   if [ ! -x obj_$t/Vunit18_$t ]; then

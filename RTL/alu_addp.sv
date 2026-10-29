@@ -8,5 +8,13 @@ module alu_addp #(
     input  logic [W-1:0] b,
     output logic [W-1:0] y
 );
+`ifdef KS45                                                   // timing flow: the structural Nangate45 Kogge-Stone adder
+    if (1 && W == 32) begin : g_ks
+        alu_add_ks45 #(.W(W)) u_ks (.a(a), .b(b), .y(y));
+    end else begin : g_beh
+        assign y = a + b;
+    end
+`else
     assign y = a + b;
+`endif
 endmodule
