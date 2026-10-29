@@ -42,9 +42,17 @@ module arx_group #(
     assign R[0] = x;
     generate
         for (genvar b = 0; b < NBK; b++) begin : g_ctl0
+`ifdef KS45                                               // timing flow: a buffer cell per copy keeps the copies structurally
+            for (genvar c = 0; c < NC; c++) begin : g_c    // distinct, so that opt_merge cannot fold the copies back into one
+                BUF_X1 u_0 (.A(r[0]),  .Z(r0[0][b][c]));
+                BUF_X1 u_8 (.A(r[8]),  .Z(r8[0][b][c]));
+                BUF_X1 u_b (.A(blake), .Z(bk[0][b][c]));
+            end
+`else
             assign r0[0][b] = {NC{r[0]}};
             assign r8[0][b] = {NC{r[8]}};
             assign bk[0][b] = {NC{blake}};
+`endif
         end
         for (genvar s = 1; s <= 5; s++) begin : g_ctl
             for (genvar b = 0; b < NBK; b++) begin : g_blk
