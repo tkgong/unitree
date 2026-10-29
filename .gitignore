@@ -12,6 +12,7 @@
 __pycache__/
 RTL/baseline/p3mono/target/
 RTL/baseline/cpu/obj/
+RTL/baseline/cpu/obj_linux/
 RTL/baseline/cpu/cpu_trees
 xsim.dir/
 *.jou
