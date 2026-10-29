@@ -7,6 +7,9 @@
 # maps the adders' carry chains ($lcu) as that parallel-prefix network (Yosys techmap +/choices) instead of the default;
 # ABC_SPEED=1 maps with the ORFS abc_speed script (repeated SOP balancing for delay, buffer / upsize / dnsize against the
 # library timing: the driving cell BUF_X1 and load 3.898 fF of the ORFS nangate45 config) instead of Yosys's default abc script.
+# HFLAT=1 (hier mode): every module (each ALU, the ARX step operand / result logic) is mapped by ABC on its own, then the
+# netlist is flattened and written as $WORK/<top>_flat.v (+ <top>_flat.txt): the ALUs keep the depth they get standalone
+# (ABC on the flat design maps a 32-bit add at 2x the standalone depth).
 #   sh syn.sh [top ...]    (shared mono chacha blake3)
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
@@ -32,6 +35,7 @@ opt_clean -purge
 tee -o $WK/${t}_$mode.txt stat -liberty $LIB
 EOF
     if [ -n "$NET" ] && [ $mode = flat ]; then echo "write_verilog -noattr $WK/${t}_flat.v" >> $WK/$t.$mode.ys; fi
+    if [ -n "$HFLAT" ] && [ $mode = hier ]; then printf 'flatten\nopt_clean -purge\ntee -o %s stat -liberty %s\nwrite_verilog -noattr %s\n' $WK/${t}_flat.txt $LIB $WK/${t}_flat.v >> $WK/$t.$mode.ys; fi
     /usr/bin/time -a -o $WK/time.txt -f "$t $mode: %e s, %M KB" yosys -q -l $WK/$t.$mode.log $WK/$t.$mode.ys > /dev/null 2>&1
     tail -n 1 $WK/time.txt
   done
