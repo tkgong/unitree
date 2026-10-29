@@ -6,7 +6,9 @@
 // Built with --trace (power.sh: the gate-level netlist): VCD=<file> VCD_FROM=<cycle> VCD_TO=<cycle> dump every signal in that
 // window of program cycles (clock period 1000 ps, time 0 at VCD_FROM: OpenSTA read_vcd takes the VCD's end time over the
 // number of clock edges as the period). VCD=<file> VCD_ALL=1 instead dumps from the reset on (time 0, 500 ps per clock phase),
-// built with --trace-depth 1: the ports only, the stimulus that replays the program on the gate netlist (syn/power_vcd.sh).
+// built with --trace-depth 1: the ports only. STIM=<file>: one line per clock phase from the reset on (every input, then
+// lout after the phase's eval, vectors in hex MSB first): the stimulus and expected outputs of the gate-level replay
+// (syn/tb_gl.v, syn/power_vcd.sh).
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -39,9 +41,24 @@ int main(int argc, char** argv) {
     VerilatedVcdC* tfp = nullptr;
     if (vf) { Verilated::traceEverOn(true); tfp = new VerilatedVcdC; dut->trace(tfp, 99); tfp->set_time_unit("1ps"); tfp->set_time_resolution("1ps");
               if (vall) tfp->open(vf); }
-    auto ev = [&]() { dut->eval(); if (vall && tfp) { tfp->dump(tall); tall += 500; } };
+    auto ev0 = [&]() { dut->eval(); if (vall && tfp) { tfp->dump(tall); tall += 500; } };
 #else
-    auto ev = [&]() { dut->eval(); };
+    auto ev0 = [&]() { dut->eval(); };
+#endif
+    FILE* sf = getenv("STIM") ? fopen(getenv("STIM"), "w") : nullptr;
+    const int NWI = (int)(sizeof(dut->lin) / sizeof(dut->lin[0]));
+    auto hexv = [&](FILE* o, const uint32_t* w, int n) { fputc(' ', o); for (int i = n - 1; i >= 0; i--) fprintf(o, "%08x", w[i]); };
+    auto stim = [&]() {
+        if (!sf) return;
+        fprintf(sf, "%d %d %d %d %d %d %x %x %llx", (int)dut->clk, (int)dut->rst, (int)dut->mono, (int)dut->mono2, (int)dut->htap,
+                (int)dut->blake, (unsigned)dut->r, (unsigned)dut->r2, (unsigned long long)dut->rg);
+        hexv(sf, (const uint32_t*)&dut->lin[0], NWI); hexv(sf, (const uint32_t*)&dut->lout[0], NWI); fputc('
+', sf);
+    };
+#if VM_TRACE
+    auto ev = [&]() { ev0(); stim(); };
+#else
+    auto ev = [&]() { ev0(); stim(); };
 #endif
     dut->clk = 0; dut->rst = 1; ev(); dut->clk = 1; ev(); dut->clk = 0; dut->rst = 0; ev();
     // the HLS unit starts from zero registers: run zero inputs through every pipeline first (18 cycles)
@@ -104,6 +121,7 @@ int main(int argc, char** argv) {
 #if VM_TRACE
     if (vall && tfp) { dut->clk = 0; ev(); tfp->close(); }
 #endif
+    if (sf) { dut->clk = 0; ev(); fclose(sf); }
     printf("SUMMARY: %s, %s: %ld cycles, %ld node finishes checked (%ld words), %ld mismatching words in %ld finishes\n",
            TOPNAME, argv[1], cyc, checks, words, bad, badcyc);
     delete dut; return bad ? 1 : 0;
