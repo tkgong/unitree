@@ -68,6 +68,10 @@ the flow (`syn.sh` KEEPALU=1 KS45=1 ABC_SPEED=1 ADDER=kogge-stone ABC_D=600, the
 timing-closed netlists: shared 1,898,076 um^2, mono 990,478, chacha 890,724, blake3 1,015,758 (sharing on them: logic
 31.8%, registers 37.0%, total 34.5%).
 
+Power (vectorless OpenSTA on the same netlists, 1 GHz, every net toggling 0.5 per cycle, no wires / clock tree):
+chacha 1.67 W, blake3 1.91, mono 2.03, shared 3.68 per core; SRAM about 63 mW per core (FakeRAM); energy per 2^18 tree vs the
+RTX 3070 in `unit18/syn/work/power.md` (15-73x below the GPU's above-idle energy, 27-33x with the DRAM traffic at 7.5 pJ/bit).
+
 The previous designs (the HLS-generated bz3 unit in `RTL/pe`, its accelerator shell `RTL/fsm`, the per-ALU ORFS runs
 `RTL/syn`, the standalone ALU testbench `RTL/verify` and the ALUs only those used) were removed on 2026-10-28; they are in
 the git history (last at commit fb6a8ab).

@@ -27,6 +27,7 @@ RTL/unit18/syn/work*.out
 !RTL/unit18/syn/work/report.md
 !RTL/unit18/syn/work/time.txt
 !RTL/unit18/syn/work/timing.md
+!RTL/unit18/syn/work/power.md
 RTL/unit18/verify/obj_*/
 RTL/unit18/verify/dp4/
 RTL/unit18/verify/*.out
