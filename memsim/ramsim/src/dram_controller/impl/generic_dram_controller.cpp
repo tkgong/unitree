@@ -189,7 +189,7 @@ class GenericDRAMController final : public IDRAMController, public Implementatio
     bool schedule_request(ReqBuffer::iterator& req_it, ReqBuffer*& req_buffer) {
       bool request_found = false;
       // 2.1    First, check the act buffer to serve requests that are already activating (avoid useless ACTs)
-      if (req_it= m_scheduler->get_best_request(m_active_buffer); req_it != m_active_buffer.end()) {
+      if (req_it= m_scheduler->get_best_request(m_active_buffer); m_priority_buffer.size() == 0 && req_it != m_active_buffer.end()) {  // unitree: a pending refresh goes first (else ACT / PREA alternate forever)
         if (m_dram->check_ready(req_it->command, req_it->addr_vec)) {
           request_found = true;
           req_buffer = &m_active_buffer;

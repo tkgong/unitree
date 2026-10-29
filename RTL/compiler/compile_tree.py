@@ -933,9 +933,9 @@ if MEMSIM:
         if REC: open(REC, "w").write("".join(f"{a} {b} {c}\n" for a, b, c in rec_log))
         if BG: print(f"    other cores       {len(BG)} cores replaying {BGF.rsplit(':', 1)[0]} on the same DRAM (addresses 64 MB apart); "
                      f"behind their recorded pace by {[b[1] for b in BG]} cycles at the end, {sum(len(b[0]) for b in BG):,} of their accesses not yet sent")
-        print(f"    HBM2 commands     ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
+        print(f"    {('GDDR6' if HKIND == 'gddr' else 'HBM2'):<5} commands    ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
               f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation; write buffers drained {drain} cycles after the last cycle")
-        print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
+        print(f"    {('GDDR6' if HKIND == 'gddr' else 'HBM2'):<5} read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
 if TRF: TRF.write("Z" + chr(10)); TRF.close(); print(f"  trace               {TRACE_F}: {cycles:,} cycles")
 print(f"  instruction stream  {cycles:,} words; per cycle: mono + blake bit + round indices + block/state addresses" + (" + h words" if usehchain else ""))
 print(f"  check: all GGM leaves / Merkle roots and parents vs Python reference: {'OK' if ok else 'FAIL'}")

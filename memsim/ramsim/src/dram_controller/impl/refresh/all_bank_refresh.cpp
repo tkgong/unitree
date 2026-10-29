@@ -29,7 +29,7 @@ class AllBankRefresh : public IRefreshManager, public Implementation {
       m_dram = m_ctrl->m_dram;
 
       m_dram_org_levels = m_dram->m_levels.size();
-      m_num_ranks = m_dram->get_level_size("rank");
+      m_num_ranks = m_dram->get_level_size("rank"); if (m_num_ranks < 1) m_num_ranks = 1;  // unitree: GDDR6 / HBM2 have no rank level (-1 skipped every refresh)
 
       m_nrefi = m_dram->m_timing_vals("nREFI");
       m_ref_req_id = m_dram->m_requests("all-bank-refresh");

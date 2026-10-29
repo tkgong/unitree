@@ -5,7 +5,7 @@
     m = HBM(channels=8)                 # one HBM2 stack, memsim/hbm2.yaml
     m = GDDR6(channels=16)              # the RTX 3070's memory (2 channels = one core's 1/8 share), memsim/gddr6.yaml
     ok = m.send(addr, write, tag)       # one 32 B access; False = the channel's controller queue is full (retry later)
-    done = m.tick()                     # one memory clock (= one unit cycle at 1 GHz); tags of the reads completed in it
+    done = m.tick()                     # one unit cycle (HBM2: one memory clock; GDDR6: 7 memory clocks per 4 ticks); tags of the reads completed in it
     m.cmd("ACT"), m.stats()             # DRAM commands issued so far
 
 Built on Linux by memsim/build_linux.sh (libramulator.so next to memsim/ramsim/CMakeLists.txt). UNITREE_RAMSIM overrides

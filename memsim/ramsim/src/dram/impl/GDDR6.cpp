@@ -51,7 +51,7 @@ class GDDR6 : public IDRAM, public Implementation {
       m_commands, m_levels, {
         {"REFab", "channel"},  {"REFp2b",  "channel"},
         {"ACT",   "row"},
-        {"PREA", "bank"},   {"PRE",  "bank"},  {"REFpb", "bank"},
+        {"PREA", "channel"}, {"PRE",  "bank"},  {"REFpb", "bank"},
         {"RD",    "column"}, {"WR",   "column"},  {"RDA",  "column"}, {"WRA",   "column"},
       }
     );
