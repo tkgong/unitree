@@ -9,6 +9,7 @@
 #      report_power (internal + pin-capacitance switching + leakage; no wires, no clock tree: pre-placement).
 #   WORK=work_t10 FROM=1000 TO=2000 sh power_vcd.sh <top> <trace> [<trace> ...]     -> $WORK/pw_<top>_<trace>.out
 cd "$(dirname "$0")"
+ulimit -s unlimited                                          # the gate-level model's eval needs a large stack
 WK=${WORK:-work_t10}; T=$1; shift; FROM=${FROM:-1000}; TO=${TO:-2000}
 LIBDIR=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib
 LIB=$LIBDIR/NangateOpenCellLibrary_typical.lib
