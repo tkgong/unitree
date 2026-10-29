@@ -46,7 +46,7 @@ module arx_group #(
             for (genvar b = 0; b < NBK; b++) begin : g_blk
                 logic [8:0] ar_q;
                 logic       bk_q;
-                always_ff @(posedge clk) begin ar_q <= ar[s - 1][b]; bk_q <= bk[s - 1][b]; end
+                (* keep *) always_ff @(posedge clk) begin ar_q <= ar[s - 1][b]; bk_q <= bk[s - 1][b]; end   // keep: no opt_merge of the copies
                 assign ar[s][b] = ar_q;
                 assign bk[s][b] = bk_q;
             end

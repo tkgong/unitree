@@ -34,7 +34,7 @@ module mono_dp18 #(
     // ---- mono / r travel with the state (mpc: NMC copies of the issue bit, copy c serves lent adders c*MPR..) ----
     logic [D:1] mpc [0:NMC-1];
     logic [8:0] rr [1:D];
-    always_ff @(posedge clk) begin
+    (* keep *) always_ff @(posedge clk) begin                 // keep: the copies are identical, no opt_merge
         for (int c = 0; c < NMC; c++) mpc[c] <= rst ? '0 : {mpc[c][D-1:1], mono};
         rr[1] <= r;
         for (int k = 2; k <= D; k++) rr[k] <= rr[k - 1];
