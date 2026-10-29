@@ -1,12 +1,15 @@
 """bench_hbm.py - calibrate the Ramulator2 HBM2 model (memsim/hbm2.yaml) against the ideal bw= pipe of compile_tree.py:
 achieved B/cycle vs the peak (32 B per channel per cycle) for the access patterns the tree programs produce.
-    python3 bench_hbm.py [channels ...] [--map RoBaRaCoCh|MOP4CLXOR|ChRaBaRoCo ...] [--nbl 2|4 ...] [--md out.md]"""
+    python3 bench_hbm.py [channels ...] [--map RoBaRaCoCh|MOP4CLXOR|ChRaBaRoCo ...] [--nbl 2|4 ...] [--gddr] [--md out.md]
+--gddr: the GDDR6 model (memsim/gddr6.yaml, the RTX 3070's memory: 28 B/cycle peak per channel, 16 channels = 448 GB/s)."""
 import random, sys
-from hbm import batch, HBM, TX
+from hbm import batch, HBM, GDDR6, TX
 
 CHS, MAPS, NBLS, out, i = [], [], [], "", 1
+KIND = "hbm"
 while i < len(sys.argv):
     a = sys.argv[i]
+    if a == "--gddr": KIND = "gddr"; i += 1; continue
     if a in ("--md", "--map", "--nbl"):
         v = sys.argv[i + 1]; i += 2
         if a == "--md": out = v
@@ -30,12 +33,13 @@ for name, (gen, wr) in PATS.items():
    for mp in MAPS:
     for ch in CHS:
         addrs = gen()
-        cyc, st, lat = batch(addrs, channels=ch, mapper=mp, write=wr, nbl=nbl)
+        cyc, st, lat = batch(addrs, channels=ch, mapper=mp, write=wr, nbl=nbl, kind=KIND)
+        pk = (28 if KIND == "gddr" else TX) * ch
         bpc = len(addrs) * TX / cyc
         la = f"{sum(lat) / len(lat):.1f} / {max(lat)}" if lat else "- (writes complete at acceptance)"
-        L.append(f"| {name} | {nbl} | {mp} | {ch} | {TX * ch} | {cyc:,} | {bpc:.1f} | {100 * bpc / (TX * ch):.0f}% | {100 * st['row_hit']:.1f}% | {st['B_per_act']:,.0f} | {la} |")
+        L.append(f"| {name} | {nbl} | {mp} | {ch} | {pk} | {cyc:,} | {bpc:.1f} | {100 * bpc / pk:.0f}% | {100 * st['row_hit']:.1f}% | {st['B_per_act']:,.0f} | {la} |")
         print(L[-1], flush=True)
-m = HBM(1, MAPS[0], NBLS[0])
+m = (GDDR6 if KIND == "gddr" else HBM)(1, MAPS[0], NBLS[0])
 txt = m.describe() + "\n\n" + "\n".join(L)
 print(txt)
 if out: open(out, "w").write(txt + "\n")

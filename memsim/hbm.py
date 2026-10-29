@@ -1,7 +1,9 @@
-"""hbm.py - Ramulator2 HBM2 (UniZK's RamSim, memsim/ramsim) as a cycle-level memory for the unit's Python simulators.
+"""hbm.py - Ramulator2 (UniZK's RamSim, memsim/ramsim) as a cycle-level memory for the unit's Python simulators: HBM2
+(memsim/hbm2.yaml) or the benchmark GPU's GDDR6 (memsim/gddr6.yaml, RTX 3070: 16 channels x 16 bit at 14 Gb/s = 448 GB/s).
 
-    from hbm import HBM
+    from hbm import HBM, GDDR6
     m = HBM(channels=8)                 # one HBM2 stack, memsim/hbm2.yaml
+    m = GDDR6(channels=16)              # the RTX 3070's memory (2 channels = one core's 1/8 share), memsim/gddr6.yaml
     ok = m.send(addr, write, tag)       # one 32 B access; False = the channel's controller queue is full (retry later)
     done = m.tick()                     # one memory clock (= one unit cycle at 1 GHz); tags of the reads completed in it
     m.cmd("ACT"), m.stats()             # DRAM commands issued so far
@@ -51,6 +53,9 @@ class HBM:
         n = s.L.hbm_tick(s.h, s._buf, 65536); s.clk += 1
         return s._buf[:n]
 
+    def mem_clocks(s):                               # memory clocks ticked so far
+        return s.clk
+
     def cmd(s, name):
         return s.L.hbm_cmd(s.h, name.encode())
 
@@ -67,10 +72,36 @@ class HBM:
                 f"nBL {s.nbl}, 1 KB rows, FR-FCFS, all-bank refresh, {s.mapper}; peak {s.peak} B/cycle")
 
 
-def batch(addrs, channels=8, mapper="RoBaRaCoCh", write=False, port=None, max_cycles=10_000_000, nbl=2):
+class GDDR6(HBM):
+    """The benchmark GPU's GDDR6 (memsim/gddr6.yaml): CK 1.75 GHz = 1.75 memory clocks per unit cycle (1 GHz), ticked 7 times
+    per 4 cycles; 32 B per access (BL16), 2 CK per access per 16-bit channel = 28 B per unit cycle per channel; 16 channels =
+    the RTX 3070's 448 GB/s."""
+    RATIO = 7, 4                                     # memory clocks per unit cycles
+
+    def __init__(s, channels=16, mapper="RoBaRaCoCh", nbl=2, extra=()):
+        HBM.__init__(s, channels, mapper, nbl, yaml=os.path.join(HERE, "gddr6.yaml"), extra=extra)
+        s.peak = 16 * s.RATIO[0] / s.RATIO[1] * channels   # B per unit cycle (16 B per CK per channel at nBL 2)
+        s.acc = 0                                     # memory clocks owed
+
+    def tick(s):                                     # one unit cycle: 1 or 2 memory clocks
+        s.acc += s.RATIO[0]
+        out = []
+        while s.acc >= s.RATIO[1]:
+            s.acc -= s.RATIO[1]
+            n = s.L.hbm_tick(s.h, s._buf, 65536); s.clk += 1
+            out.extend(s._buf[:n])
+        return out
+
+    def describe(s):
+        return (f"Ramulator2 GDDR6 (the RTX 3070's memory: 16 channels x 16 bit at 14 Gb/s = 448 GB/s): {s.channels} channel(s) "
+                f"= {28 * s.channels} GB/s, CK 1.75 GHz (tCK {s.tck:g} ns, 7 memory clocks per 4 unit cycles), {TX} B per access "
+                f"(BL16, nBL {s.nbl}), 2 KB rows, FR-FCFS, all-bank refresh, {s.mapper}; peak {s.peak:g} B/cycle")
+
+
+def batch(addrs, channels=8, mapper="RoBaRaCoCh", write=False, port=None, max_cycles=10_000_000, nbl=2, kind="hbm"):
     """Issue the 32 B accesses in order (as many per cycle as the controllers take, at most `port`), until all reads have
-    returned -> (cycles, stats, latencies of the reads). The open phase and the microbenchmarks use it."""
-    m = HBM(channels, mapper, nbl); port = port or channels
+    returned -> (cycles, stats, latencies of the reads). The open phase and the microbenchmarks use it. kind: hbm | gddr."""
+    m = GDDR6(channels, mapper, nbl) if kind == "gddr" else HBM(channels, mapper, nbl); port = port or channels
     i, t, out, sent = 0, 0, 0, {}
     lat = []
     while (i < len(addrs) or sent) and t < max_cycles:

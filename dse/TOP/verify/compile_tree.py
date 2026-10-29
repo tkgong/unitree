@@ -217,6 +217,9 @@ if MEMSIM:
     SRAM_KB = float(next(a[5:] for a in sys.argv[5:] if a.startswith("sram=")))
     BW = float(next((a[3:] for a in sys.argv[5:] if a.startswith("bw=")), "256"))
     HCH = int(next((a[4:] for a in sys.argv[5:] if a.startswith("hbm=")), "0"))     # hbm=<channels>: Ramulator2 HBM2 (memsim/) instead of the bw= pipe
+    GCH = int(next((a[5:] for a in sys.argv[5:] if a.startswith("gddr=")), "0"))    # gddr=<channels>: Ramulator2 GDDR6, the benchmark GPU's memory (RTX 3070,
+    HKIND = "gddr" if GCH > 0 else "hbm"                                             # 16 channels = 448 GB/s; 2 = one core's share when 8 cores split it)
+    HCH = HCH or GCH
     HBMSIM = HCH > 0
     if HBMSIM:
         sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "memsim"))
@@ -225,7 +228,7 @@ if MEMSIM:
         HPORT = int(next((a[6:] for a in sys.argv[5:] if a.startswith("hport=")), str(HCH)))   # accesses the SRAM side can send per cycle
         HLAY = next((a[5:] for a in sys.argv[5:] if a.startswith("hlay=")), "block")   # HBM layout of the stored nodes
         HNBL = int(next((a[5:] for a in sys.argv[5:] if a.startswith("hnbl=")), "2"))   # 2: JEDEC HBM2 burst; 4: the Ramulator2 preset (UniZK's model as is)
-        HBMX = hbmlib.HBM(HCH, HMAP, HNBL)
+        HBMX = hbmlib.GDDR6(HCH, HMAP, HNBL) if HKIND == "gddr" else hbmlib.HBM(HCH, HMAP, HNBL)
         BW = float(HBMX.peak)
     rsent = {}; rlat = [0, 0, 0]                                                     # hbm=: reads in flight (node id -> send cycle); latency n / sum / max
     STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
@@ -780,7 +783,7 @@ def print_open():
         if HBMSIM:                                                                    # the same batch through the HBM2 model, in address order
             res = []
             for L in LAYOUTS:
-                cyc, st, lat = hbmlib.batch(sorted(addr(L, l, j) for (l, j) in rd), HCH, HMAP, port=HPORT, nbl=HNBL)
+                cyc, st, lat = hbmlib.batch(sorted(addr(L, l, j) for (l, j) in rd), HCH, HMAP, port=HPORT, nbl=HNBL, kind=HKIND)
                 res.append(f"{L} {cyc:,} cycles ({len(rd) * 32 / cyc:.1f} B/cycle, ACT {st['ACT']:,}, row hit {100 * st['row_hit']:.0f}%, latency avg {sum(lat) / max(1, len(lat)):.0f})")
             print(f"          HBM2 {HCH} ch: " + "; ".join(res))
 if OPENONLY:
@@ -904,7 +907,7 @@ if MEMSIM:
         drain = 0                                                                     # writes the controllers accepted but had not issued at the last cycle
         while HBMX.cmd("WR") + HBMX.cmd("WRA") < hbm_wr // 32 and drain < 1_000_000: HBMX.tick(); drain += 1
         st = HBMX.stats()
-        print(f"    HBM2 model        {HBMX.describe()}; SRAM side sends <= {HPORT} accesses/cycle; stored nodes in the {HLAY} layout")
+        print(f"    DRAM model        {HBMX.describe()}; SRAM side sends <= {HPORT} accesses/cycle; stored nodes in the {HLAY} layout")
         print(f"    HBM2 commands     ACT {st['ACT']:,}  PRE {st['PRE'] + st['PREA']:,}  RD {st['RD'] + st['RDA']:,}  WR {st['WR'] + st['WRA']:,}  REFab {st['REFab']:,}; "
               f"row hit {100 * st['row_hit']:.1f}%, {st['B_per_act']:,.0f} B per activation; write buffers drained {drain} cycles after the last cycle")
         print(f"    HBM2 read latency {rlat[1] / max(1, rlat[0]):.1f} cycles average, {rlat[2]} max (send to data on chip, {rlat[0]:,} reads)")
