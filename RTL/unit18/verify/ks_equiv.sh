@@ -5,7 +5,7 @@
 cd "$(dirname "$0")"
 LIB=/home/dana336/eda/OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
 cat > ks_equiv.ys <<EOF
-read_liberty $LIB
+read_liberty -ignore_miss_func $LIB
 read_verilog -sv ../../alu_add_ks45.sv
 read_verilog -sv <<V
 module gold #(parameter int W = 32) (input [W-1:0] a, input [W-1:0] b, output [W-1:0] y); assign y = a + b; endmodule
