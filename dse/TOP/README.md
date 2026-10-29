@@ -3,7 +3,7 @@
 One II=1 unit that runs ChaCha20 (GGM), BLAKE3 (Merkle, keyed-XOF GGM), Monolith-31 (Merkle) and Poseidon2-M31 (Merkle) on a
 shared adder / multiplier array. No mode register and no hardware scheduler: software pre-compiles every request into a
 per-cycle operation stream (per-issue bits). Older variants and results are in `D:\unitree\_archive_2026-10-23\` (same relative
-paths, outside the repository); the CPU / GPU baselines are in `../../merkle_baseline/`, the ALUs in SystemVerilog in `../../RTL/`.
+paths, outside the repository); the CPU / GPU baselines are in `../../RTL/baseline/`, the hand-written RTL in `../../RTL/src/`.
 
 ## Design
 
@@ -60,7 +60,7 @@ adders are within 3%, the 31 x 31 multiplier is 1.39x the model, increments / ca
 multiplier and xor factors the ALU sharing is +37.0% (not +39.2%) and the total +32.0% (not +32.5%). The multiplier does
 not close 1 ns as one stage in that library (1.45 ns); as a two-stage Dadda tree it does (+0.067 ns after routing), and every other ALU meets
 1 ns after routing with margin (`RTL/syn/orfs_results_route.md`, in git history), so 1 GHz holds for the ALUs with the multiplier ranks at two
-pipeline levels. The bz3s configuration is hand-written in SystemVerilog in `RTL/unit18` (verified against this C++ through compiled-program traces).
+pipeline levels. The bz3s configuration is hand-written in SystemVerilog in `RTL/src` (verified against this C++ through compiled-program traces).
 
 | unit | gates | logic | ALU | registers | total |
 |---|---:|---:|---:|---:|---:|

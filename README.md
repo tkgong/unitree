@@ -1,16 +1,20 @@
 # unitree
 
-A unified II=1 hash unit for Merkle and GGM trees (ChaCha20, BLAKE3, Monolith-31, Poseidon2-M31 on one shared
-adder / multiplier array), its software tree compiler and cycle-accurate simulator, the ALUs in SystemVerilog, and the
-CPU / GPU baselines.
+A unified II=1 hash unit for Merkle and GGM trees (ChaCha20, BLAKE3, Monolith-31 on one shared adder array), its
+software tree compiler and cycle-accurate simulator, the hand-written SystemVerilog unit with its synthesis, timing and
+power flows, the DRAM co-simulation, and the CPU / GPU baselines.
 
 | directory | contents | start at |
 |---|---|---|
-| `dse/TOP` | the HLS unit (generators, headers, synthesis configs), `verify/compile_tree.py` (tree compiler + simulator + memory model + audits), the measured results | `dse/TOP/README.md` |
+| `RTL/src` | the hand-written SystemVerilog: `alu/` (the ALUs), `shared/` (the shared unit and its blocks), `standalone/` (the natural ChaCha20 / BLAKE3 / Monolith units it is compared with) | `RTL/README.md` |
+| `RTL/syn` | Yosys / ABC synthesis and OpenROAD timing repair (Nangate45), the synthesized netlists | `RTL/README.md` |
+| `RTL/test` | testbenches: Verilator closed-loop replay against the HLS unit, the datapath vectors, the adder equivalence proofs, the gate-level replay | `RTL/README.md` |
+| `RTL/benchmark` | the measurements: timing, area / sharing, power (activity from real program traces), SRAM macros, and the summary of speedup / power / energy / area | `RTL/benchmark/README.md` |
+| `RTL/baseline` | CPU (BLAKE3 C, our ChaCha20 AVX2, Plonky3 Monolith via `p3mono`) and GPU (CUDA) measurements | `RTL/baseline/README.md` |
+| `memsim` | Ramulator2 co-simulation (HBM2, GDDR6 of the RTX 3070) driven by the tree compiler: the system cycles per tree | `memsim/README.md` |
+| `dse/TOP` | the HLS unit (generators, headers, synthesis configs), `verify/compile_tree.py` (tree compiler + simulator + memory model + audits) | `dse/TOP/README.md` |
 | `dse/common`, `dse/verify` | shared headers (`lanes.h`, `field31.h`), `build_dll.sh` (HLS C++ -> DLL driven from Python) | |
-| `RTL` | the hand-written SystemVerilog unit (`RTL/unit18`: shared unit + natural ChaCha20 / BLAKE3 / Monolith units, the ALUs of `dse/TOP/alu_core.h`), Verilator closed-loop check against the HLS unit, Yosys / Nangate45 sharing report | `RTL/README.md` |
-| `merkle_baseline` | CPU (BLAKE3 C, Plonky3 Monolith / Poseidon2 via `p3mono`) and GPU (CUDA) baselines | `merkle_baseline/README.md` |
 
-Build products (DLLs, simulation vectors, Rust `target/`, object files) are not committed; each directory's README
-names the script that rebuilds them. The HLS component project (`hls_component`) and the archive of earlier variants
-(`_archive_2026-10-23`) stay outside the repository.
+Every flow runs on the Linux machine dana336 (`RTL/env.sh` has its tool paths). Build products (shared libraries, Verilator
+objects, synthesis work directories, Rust `target/`) are not committed; each README names the script that rebuilds them.
+The HLS component project (`hls_component`) and the archive of earlier variants stay outside the repository.

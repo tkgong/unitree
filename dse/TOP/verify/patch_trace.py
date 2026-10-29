@@ -1,6 +1,6 @@
 """patch_trace.py - add trace=<file> to compile_tree.py: per cycle the controls, the lanes the program writes fresh, the
 lanes it copies from the previous output (recirculation / span passing), and at every node finish the expected values of
-the lanes the result is read from (the DLL's output; ARX exact, Monolith mod p). The RTL testbench (RTL/unit18/verify)
+the lanes the result is read from (the DLL's output; ARX exact, Monolith mod p). The RTL testbench (RTL/test)
 replays the program closed-loop: the copies come from the RTL's own previous output.
     python patch_trace.py          (idempotent)"""
 import os

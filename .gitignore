@@ -1,6 +1,6 @@
 # build products, rebuilt by the scripts next to them:
 #   dse/TOP/verify/*.dll    sh dse/TOP/build_bz.sh (clang++ on the Vitis ap_int headers, see dse/verify/build_dll.sh)
-#   merkle_baseline         build_cpu.sh / build_gpu*.sh / cargo build --release (p3mono)
+#   RTL/baseline            cpu/build_cpu_linux.sh / build_gpu_trees2_linux.sh / cargo build --release (p3mono)
 *.dll
 *.exp
 *.lib
@@ -10,27 +10,25 @@
 *.vvp
 *.pyc
 __pycache__/
-merkle_baseline/p3mono/target/
-merkle_baseline/cpu/obj/
+RTL/baseline/p3mono/target/
+RTL/baseline/cpu/obj/
+RTL/baseline/cpu/cpu_trees
 xsim.dir/
 *.jou
 *.wdb
 # memsim (Linux): sh memsim/build_linux.sh
 *.so
 memsim/ramsim/build/
-memsim/ramsim/build.log
+memsim/ramsim/build*.log
 memsim/ramsim/ext/
 memsim/ext/
-# RTL/unit18 synthesis / simulation outputs (dana336)
-RTL/unit18/syn/work*/
-RTL/unit18/syn/work*.out
-!RTL/unit18/syn/work/report.md
-!RTL/unit18/syn/work/time.txt
-!RTL/unit18/syn/work/timing.md
-!RTL/unit18/syn/work/power.md
-RTL/unit18/verify/obj_*/
-RTL/unit18/verify/dp4/
-RTL/unit18/verify/*.out
-RTL/unit18/verify/verilator_*.log
-RTL/unit18/verify[0-9]/
+# RTL flows (dana336): synthesis / power work directories, simulation builds, generated traces
+RTL/syn/work*/
+RTL/test/obj_*/
+RTL/test/trp/
+RTL/test/*.out
+RTL/test/verilator_*.log
+RTL/test/ks_equiv.ys
+RTL/test/ks_equiv.log
+RTL/benchmark/power/vcd_act
 .vscode/

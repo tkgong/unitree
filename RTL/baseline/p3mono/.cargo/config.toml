@@ -1,0 +1,11 @@
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+
+[build]
+rustflags = ["-C", "target-cpu=native", "--cfg", "wrap_proc_macro", "--cfg", "if_docsrs_then_no_serde_core"]
+
+[target.x86_64-pc-windows-msvc.rayon-core]
+rustc-cfg = []

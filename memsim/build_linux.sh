@@ -4,8 +4,9 @@
 #      and argparse 2.9 from GitHub into memsim/ramsim/ext (as upstream Ramulator2 does).
 #   2. memsim/ext/ap_types: Xilinx's open-source ap_int headers (HLS_arbitrary_Precision_Types, Apache-2.0), standing in for
 #      the Vitis headers the Windows DLLs use.
-#   3. dse/TOP/verify/lz_16.so (bz: four primitives) and lz3_16.so (bz3: ChaCha20 + BLAKE3 + Monolith): the same sources and
-#      defines as build_all.sh / build_bz.sh, compiled by g++ instead of clang-cl.
+#   3. dse/TOP/verify/lz_16.so (bz: four primitives), lz3_16.so (bz3: ChaCha20 + BLAKE3 + Monolith), lz3s_16.so (bz3s: the
+#      18-block unit of RTL/src) and its natural units lm3s_10 / lnc18_04 / lnb18_02: the same sources and defines as
+#      build_all.sh / build_bz.sh / build_bz3s.sh, compiled by g++ instead of clang-cl.
 #   sh memsim/build_linux.sh [CXX]          (default g++-13)
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$HERE/.." && pwd)
@@ -24,6 +25,11 @@ unit() {   # dir, name, MODES_MASK
 }
 unit bz lz_16 0x16
 unit bz3 lz3_16 0x16
+unit bz3s lz3s_16 0x16          # the 18-block unit RTL/src implements (the system runs and the RTL traces)
+unit bz3s lm3s_10 0x10          # its natural units: Monolith only,
+unit nat18c lnc18_04 0x04       #   ChaCha20 only (private adders),
+unit nat18c lnb18_02 0x02       #   BLAKE3 only
 PY=${PY:-python3}
-$PY verify/check_axn.py verify/lz_16.so 0x16 | tail -n 1
-$PY verify/check_axn.py verify/lz3_16.so 0x16 | tail -n 1
+for m in "lz_16 0x16" "lz3_16 0x16" "lz3s_16 0x16" "lm3s_10 0x10" "lnc18_04 0x04" "lnb18_02 0x02"; do
+  set -- $m; $PY verify/check_axn.py verify/$1.so $2 | tail -n 1
+done
