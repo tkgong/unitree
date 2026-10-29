@@ -21,6 +21,11 @@ cd "$R/syn"
 WK=${WORK:-work_t10}; T=$1; shift; FROM=${FROM:-1000}; TO=${TO:-1400}
 TR=${TRDIR:-$R/test/trp}
 [ -f $WK/ng45_cells.v ] || yosys -q -p "read_liberty -ignore_miss_func $LIB; write_verilog -noattr $WK/ng45_cells.v"
+# the power liberty: the flip-flops' internal-power conditions name both Q and QN ("!CK & !D & !Q & QN"); OpenSTA takes the
+# two as independent, so the states sum to (1-d)^2 + d^2 < 1 (d = Q's duty) and up to half the clock-pin power was lost.
+# The QN terms are dropped (QN = !Q).
+[ -f $WK/ng45_power.lib ] || sed -E "/when/ s/ & !?QN//g" $LIB > $WK/ng45_power.lib
+CKCAP=$(awk '/^\s*cell \(DFF_X1\)/ {c = 1} c && /pin \(CK\)/ {p = 1} c && p && /^\s*capacitance/ {gsub(/[;\t ]/, ""); split($0, a, ":"); print a[2]; exit}' $LIB)
 [ -x $H/vcd_act ] || g++ -O2 -o $H/vcd_act $H/vcd_act.cpp
 if [ ! -f $WK/${T}_gl.v ]; then
   TIE=""; grep -q "(zero_)" $WK/${T}_rep.v && TIE="connect -set zero_ 1'b0;"     # OpenROAD's tie-low net (written undeclared)
@@ -47,23 +52,32 @@ if [ ! -f $SIM ]; then
 fi
 for p in "$@"; do
   O=$WK/pw_${T}_$p.out; V=$WK/pw_${T}_$p.vcd
-  STIM=$WK/stim_${T}_$p.txt $OBJ/Vunit18_$T $TR/$p.tr | tail -n 1 > $O
-  cat $WK/${T}_gl.txt >> $O
-  /usr/bin/time -a -o $WK/time_gl.txt -f "vvp $T $p: %e s, %M KB" \
-  $OSS/vvp -n $SIM +STIM=$WK/stim_${T}_$p.txt +VCD=$V +FROM=$PF +TO=$PT | grep -E "GATE|differs|STIM" >> $O
-  $H/vcd_act $V > $WK/act_${T}_$p.txt && rm -f $V $WK/stim_${T}_$p.txt
-  python3 $H/act_tcl.py $WK/ng45_cells.v $WK/${T}_gl.v $WK/act_${T}_$p.txt $WK/act_${T}_$p.tcl >> $O
+  if [ -z "$PW_ONLY" ]; then                                 # PW_ONLY=1: only the power step, on the activity files already there
+    STIM=$WK/stim_${T}_$p.txt $OBJ/Vunit18_$T $TR/$p.tr | tail -n 1 > $O
+    cat $WK/${T}_gl.txt >> $O
+    /usr/bin/time -a -o $WK/time_gl.txt -f "vvp $T $p: %e s, %M KB" \
+    $OSS/vvp -n $SIM +STIM=$WK/stim_${T}_$p.txt +VCD=$V +FROM=$PF +TO=$PT | grep -E "GATE|differs|STIM" >> $O
+    $H/vcd_act $V > $WK/act_${T}_$p.txt && rm -f $V $WK/stim_${T}_$p.txt
+    python3 $H/act_tcl.py $WK/ng45_cells.v $WK/${T}_gl.v $WK/act_${T}_$p.txt $WK/act_${T}_$p.tcl >> $O
+  else
+    grep -vE "^(Group|Sequential|Combinational|Clock|Macro|Pad|Total|clock pins)" $O > $O.tmp; mv $O.tmp $O
+  fi
   cat > $WK/pw_${T}_$p.tcl <<TCL
-read_liberty /lib/NangateOpenCellLibrary_typical.lib
+read_liberty /w/ng45_power.lib
 read_verilog /w/${T}_gl.v
 link_design unit18_$T
 create_clock -name clk -period 1.0 [get_ports clk]
 set_input_delay 0 -clock clk [delete_from_list [all_inputs] [get_ports clk]]
 set_output_delay 0 -clock clk [all_outputs]
 source /w/act_${T}_$p.tcl
-report_power
+report_power -digits 4
 TCL
-  docker run --rm -v $(pwd)/$WK:/w -v $LIBDIR:/lib $OPENLANE sh -c "sta -no_splash -exit /w/pw_${T}_$p.tcl" > $WK/sta_${T}_$p.log 2>&1
+  docker run --rm -v $(pwd)/$WK:/w $OPENLANE sh -c "sta -no_splash -exit /w/pw_${T}_$p.tcl" > $WK/sta_${T}_$p.log 2>&1
   grep -E "^(Group|Sequential|Combinational|Clock|Macro|Pad|Total)" $WK/sta_${T}_$p.log >> $O
+  # the clock net: OpenSTA charges a net's switching to its driver and clk has none (no clock tree pre-placement), so the
+  # clock pins' capacitance is added here: (flip-flops x CK pin capacitance) x VDD^2 x f (two transitions per cycle)
+  NFF=$(grep -cE "^\s*DFF\w*_X[0-9]+ " $WK/${T}_gl.v)
+  awk -v n=$NFF -v tot="$(awk '/^Total/ {print $5}' $WK/sta_${T}_$p.log)" -v c=$CKCAP \
+      'BEGIN { p = n * c * 1e-15 * 1.1 * 1.1 * 1e9; printf "clock pins           %d flip-flops x %.4f fF x 1.1 V^2 x 1 GHz = %.4f W; total with the clock pins %.4f W\n", n, c, p, tot + p }' >> $O
   echo "== $T $p"; cat $O
 done
