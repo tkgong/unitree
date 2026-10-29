@@ -46,6 +46,26 @@ core's share when 8 cores split the 16 channels (a static partition: every core 
 Calibration (`bench_hbm.py 2 16 --gddr`): sequential read 79-82% of the peak, sequential write 83-88%, row hit 98%, read
 latency 60 cycles average (the HBM2 model: 80%, 50 cycles). `results/logs18/*_gddr_<channels>.log` are the runs.
 
+Results (dana336, 2026-10-29; bz3s unit, 32 KB SRAM per core, every run `audit` OK and bit-exact; `results/logs18/*_gddr_*.log`):
+
+| program | gddr=1 (16 cores, 28 GB/s each) | gddr=2 (8 cores, 56 GB/s each) | gddr=4 (4 cores) | gddr=16 (1 core, all 448 GB/s) | HBM2 2 ch (64 GB/s) |
+|---|---:|---:|---:|---:|---:|
+| BLAKE3 Merkle 2^18 store=out | 380,872 (22.0 B/cycle) | 205,692 (40.8) | | 205,582 | 205,674 |
+| ChaCha20 GGM 2^18 store=out | 364,457 (23.0) | 205,707 (40.8) | | | 205,662 |
+| ChaCha20 GGM 2^18 store=k2 | | 233,209 (45.0) | 205,652 (51.0) | | 209,252 |
+| BLAKE3 GGM 2^18 store=out | | 205,684 (40.8) | | | 205,637 |
+| BLAKE3 GGM 2^18 store=k2 | | 233,367 (44.9) | 205,564 (51.0) | 205,569 | 209,280 |
+| Monolith Merkle 2^16 store=all | | 231,345 (18.1) | | | 231,358 |
+| Monolith Merkle 2^18 store=out | | 919,735 (9.1) | | | 919,735 |
+
+- Two GDDR6 channels per core (8 cores on the RTX 3070's 16 channels) run every store=out program and Monolith at the compute
+  bound (the same cycles as on the HBM2 model and the ideal pipe: 40.8 B/cycle of the 56 peak, 73%); the store=k2 GGM
+  variants (51 B/cycle needed) are memory-bound at 2 channels (+13%) and compute-bound at 4 (4 cores).
+- One channel per core (16 cores): memory-bound at 22-23 B/cycle of 28 (79-82% of the peak, the calibration's figure),
+  1.8x the cycles.
+- Latency: 64 cycles average read latency on the Merkle leaf stream (86 max), row hit 98%; the SRAM high-water does not
+  change (15-29 KB), 32 KB per core holds.
+
 ## Run (Linux; dana336)
 
 ```bash
