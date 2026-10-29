@@ -25,7 +25,10 @@ RTLSRC="../../alu_add.sv ../../alu_addp.sv ../../alu_lend.sv ../../alu_fold.sv .
 if [ ! -f $WK/${T}_gl.v ]; then
   TIE=""; grep -q "(zero_)" $WK/${T}_rep.v && TIE="connect -set zero_ 1'b0;"     # OpenROAD's tie-low net (written undeclared)
   grep -q "(one_)" $WK/${T}_rep.v && TIE="$TIE connect -set one_ 1'b1;"
-  yosys -q -l $WK/${T}_gl.log -p "read_liberty -lib $LIB; read_verilog $WK/${T}_rep.v; hierarchy -top unit18_$T; $TIE rename -hide w:* c:*; rename -enumerate -pattern n%; write_verilog -noattr -noexpr $WK/${T}_gl.v"
+  echo "$T: $(grep -oE '\(lout\[[0-9]+\]\)' $WK/${T}_rep.v | sort -u | wc -l) lout bits driven by cells in ${T}_rep.v, the rest tied to 0" > $WK/${T}_gl.txt
+  # setundef: OpenROAD writes the constant-0 output bits (mono / shared: the lanes no datapath drives) with no driver at
+  # all (no tie cells inserted pre-placement); they are tied to 0 here and checked against the RTL like every other bit
+  yosys -q -l $WK/${T}_gl.log -p "read_liberty -lib $LIB; read_verilog $WK/${T}_rep.v; hierarchy -top unit18_$T; $TIE setundef -undriven -zero; rename -hide w:* c:*; rename -enumerate -pattern n%; write_verilog -noattr -noexpr $WK/${T}_gl.v"
 fi
 OBJ=$WK/obj_rtl_$T
 if [ ! -x $OBJ/Vunit18_$T ]; then
@@ -47,6 +50,7 @@ fi
 for p in "$@"; do
   O=$WK/pw_${T}_$p.out; V=$WK/pw_${T}_$p.vcd
   STIM=$WK/stim_${T}_$p.txt $OBJ/Vunit18_$T $TR/$p.tr | tail -n 1 > $O
+  cat $WK/${T}_gl.txt >> $O 2>/dev/null
   /usr/bin/time -a -o $WK/time_gl.txt -f "vvp $T $p: %e s, %M KB" \
   $OSS/vvp -n $SIM +STIM=$WK/stim_${T}_$p.txt +VCD=$V +FROM=$PF +TO=$PT | grep -E "GATE|differs|STIM" >> $O
   ./vcd_act $V > $WK/act_${T}_$p.txt && rm -f $V $WK/stim_${T}_$p.txt
