@@ -36,7 +36,8 @@ def rapl():
 def rapl_ok():
     try: rapl(); return True
     except OSError: return False
-RANGE = int(open(f"{RAPL}/max_energy_range_uj").read()) if os.path.exists(f"{RAPL}/max_energy_range_uj") else 1 << 32
+try: RANGE = int(open(f"{RAPL}/max_energy_range_uj").read())
+except OSError: RANGE = 1 << 32                              # root only on dana336: the CPU part is skipped (rapl_ok)
 def rapl_j(e0, e1): return ((e1 - e0) % RANGE) / 1e6
 
 def sustain(call, per_call_trees):                          # repeat call() for >= SEC s; (t0, t1, trees)
