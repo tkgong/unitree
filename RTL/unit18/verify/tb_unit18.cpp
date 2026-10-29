@@ -3,6 +3,8 @@
 // output (here: the RTL's own previous output); at every node finish the lanes the result is read from are compared with
 // the HLS unit's (the DLL's) values: ARX lanes exactly, Monolith lanes mod p (the datapaths may hold p or 0).
 //   Vtop <trace>
+// Built with --trace (power.sh: the gate-level netlist): VCD=<file> VCD_FROM=<cycle> VCD_TO=<cycle> dump every signal in that
+// window of program cycles (clock period 1000 ps, rising edge at cycle x 1000) for OpenSTA read_vcd.
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -10,7 +12,11 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
+#include <cstdlib>
 #include "verilated.h"
+#if VM_TRACE
+#include "verilated_vcd_c.h"
+#endif
 #include VTOP_H
 typedef VTOP DUT;
 static const uint32_t P = 0x7FFFFFFF;
@@ -28,12 +34,30 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 2 * 20; i++) { dut->clk = !dut->clk; dut->eval(); }
     long cyc = 0, checks = 0, bad = 0, badcyc = 0, words = 0;
     bool have = false;
+#if VM_TRACE
+    const char* vf = getenv("VCD");
+    long vfrom = getenv("VCD_FROM") ? atol(getenv("VCD_FROM")) : 0, vto = getenv("VCD_TO") ? atol(getenv("VCD_TO")) : 0;
+    VerilatedVcdC* tfp = nullptr;
+    if (vf) { Verilated::traceEverOn(true); tfp = new VerilatedVcdC; dut->trace(tfp, 99); tfp->set_time_unit("1ps"); tfp->set_time_resolution("1ps"); }
+#endif
     auto apply_and_step = [&]() {
         for (int i = 0; i < NW; i++) dut->lin[i] = lin[i];
         dut->eval();
         for (int i = 0; i < NW; i++) prev[i] = dut->lout[i];          // out of this call = prev of the next
-        dut->clk = 1; dut->eval(); dut->clk = 0; dut->eval();
+#if VM_TRACE
+        bool on = tfp && cyc >= vfrom && cyc < vto;
+        if (on && !tfp->isOpen()) tfp->open(vf);
+        if (on) tfp->dump((uint64_t)cyc * 1000);                       // clock low, inputs of this cycle applied
+#endif
+        dut->clk = 1; dut->eval();
+#if VM_TRACE
+        if (on) tfp->dump((uint64_t)cyc * 1000 + 500);                 // after the rising edge
+#endif
+        dut->clk = 0; dut->eval();
         cyc++;
+#if VM_TRACE
+        if (tfp && tfp->isOpen() && cyc == vto) { tfp->dump((uint64_t)cyc * 1000); tfp->close(); }
+#endif
     };
     while (std::getline(f, line)) {
         if (line.empty()) continue;
