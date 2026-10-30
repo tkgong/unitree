@@ -10,70 +10,74 @@ Built with gcc / g++-13 -O3 -march=native and cargo 1.93 -C target-cpu=native (P
 
 ## ns per node (lower is better) and Mnodes/s
 
-| tree | size | implementation | 1 thread ns/node | 16 threads ns/node | 16 threads ns/node | best Mnodes/s (threads) |
+| tree | size | implementation | 1 thread ns/node | 8 threads ns/node | 16 threads ns/node | best Mnodes/s (threads) |
 |---|---:|---|---:|---:|---:|---:|
-| BLAKE3 Merkle | 2^10 | official BLAKE3 C, hash_many | 16.20 | 7.837 | 7.433 | 135 (16) |
-| BLAKE3 Merkle | 2^14 | official BLAKE3 C, hash_many | 15.54 | 2.751 | 2.759 | 364 (16) |
-| BLAKE3 Merkle | 2^18 | official BLAKE3 C, hash_many | 15.40 | 2.474 | 2.426 | 412 (16) |
-| BLAKE3 Merkle | 2^22 | official BLAKE3 C, hash_many | 17.06 | 3.909 | 4.103 | 256 (16) |
-| BLAKE3-XOF GGM | 2^10 | official BLAKE3 C, compress_xof | 48.48 | 10.982 | 11.024 | 91 (16) |
-| BLAKE3-XOF GGM | 2^10 | ours, 8-way SoA | 104.16 | 25.126 | 25.263 | 40 (16) |
-| BLAKE3-XOF GGM | 2^14 | official BLAKE3 C, compress_xof | 48.31 | 5.921 | 5.928 | 169 (16) |
-| BLAKE3-XOF GGM | 2^14 | ours, 8-way SoA | 102.14 | 15.066 | 15.040 | 66 (16) |
-| BLAKE3-XOF GGM | 2^18 | official BLAKE3 C, compress_xof | 48.46 | 4.999 | 5.001 | 200 (16) |
-| BLAKE3-XOF GGM | 2^18 | ours, 8-way SoA | 103.46 | 13.925 | 13.944 | 72 (16) |
-| BLAKE3-XOF GGM | 2^22 | official BLAKE3 C, compress_xof | 49.24 | 5.523 | 5.513 | 181 (16) |
-| BLAKE3-XOF GGM | 2^22 | ours, 8-way SoA | 103.21 | 14.519 | 14.202 | 70 (16) |
-| ChaCha20 GGM | 2^10 | ours, scalar | 77.48 | 15.646 | 15.715 | 64 (16) |
-| ChaCha20 GGM | 2^10 | ours, 8-way SoA | 114.25 | 27.501 | 27.575 | 36 (16) |
-| ChaCha20 GGM | 2^10 | ours, AVX2 intrinsics | 17.56 | 8.002 | 7.932 | 126 (16) |
-| ChaCha20 GGM | 2^14 | ours, scalar | 77.42 | 9.296 | 9.254 | 108 (16) |
-| ChaCha20 GGM | 2^14 | ours, 8-way SoA | 112.90 | 16.608 | 16.570 | 60 (16) |
-| ChaCha20 GGM | 2^14 | ours, AVX2 intrinsics | 17.11 | 3.006 | 3.001 | 333 (16) |
-| ChaCha20 GGM | 2^18 | ours, scalar | 76.92 | 8.448 | 8.443 | 118 (16) |
-| ChaCha20 GGM | 2^18 | ours, 8-way SoA | 113.01 | 15.467 | 15.445 | 65 (16) |
-| ChaCha20 GGM | 2^18 | ours, AVX2 intrinsics | 17.47 | 2.174 | 2.166 | 462 (16) |
-| ChaCha20 GGM | 2^22 | ours, scalar | 78.05 | 8.457 | 8.466 | 118 (16) |
-| ChaCha20 GGM | 2^22 | ours, 8-way SoA | 114.45 | 15.816 | 15.920 | 63 (16) |
-| ChaCha20 GGM | 2^22 | ours, AVX2 intrinsics | 18.28 | 4.843 | 4.846 | 206 (16) |
-| Monolith-31 Merkle | 2^10 | Plonky3 p3-monolith 0.8.0 | 472.69 | 427.042 | 425.516 | 2 (16) |
-| Monolith-31 Merkle | 2^10 | ours, scalar | 1475.39 | 205.268 | 205.587 | 5 (16) |
-| Monolith-31 Merkle | 2^10 | ours, 8-way SoA | 604.84 | 124.998 | 123.974 | 8 (16) |
-| Monolith-31 Merkle | 2^14 | Plonky3 p3-monolith 0.8.0 | 467.20 | 95.874 | 94.624 | 11 (16) |
-| Monolith-31 Merkle | 2^14 | ours, scalar | 1477.58 | 148.375 | 141.446 | 7 (16) |
-| Monolith-31 Merkle | 2^14 | ours, 8-way SoA | 595.01 | 79.842 | 79.910 | 13 (16) |
-| Monolith-31 Merkle | 2^18 | Plonky3 p3-monolith 0.8.0 | 432.79 | 54.593 | 54.301 | 18 (16) |
-| Monolith-31 Merkle | 2^18 | ours, scalar | 1474.93 | 134.646 | 135.991 | 7 (16) |
-| Monolith-31 Merkle | 2^18 | ours, 8-way SoA | 594.56 | 75.732 | 75.623 | 13 (16) |
-| Monolith-31 Merkle | 2^22 | Plonky3 p3-monolith 0.8.0 | 444.96 | 52.907 | 52.855 | 19 (16) |
-| Monolith-31 Merkle | 2^22 | ours, scalar | 1484.56 | 138.246 | 138.218 | 7 (16) |
-| Monolith-31 Merkle | 2^22 | ours, 8-way SoA | 601.52 | 74.887 | 75.378 | 13 (16) |
-| Poseidon2-M31 Merkle | 2^10 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 711.87 | 592.649 | 583.890 | 2 (16) |
-| Poseidon2-M31 Merkle | 2^14 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 707.67 | 137.133 | 138.254 | 7 (16) |
-| Poseidon2-M31 Merkle | 2^18 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 668.15 | 79.632 | 79.581 | 13 (16) |
-| Poseidon2-M31 Merkle | 2^22 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 668.55 | 77.723 | 77.701 | 13 (16) |
+| BLAKE3 Merkle | 2^10 | official BLAKE3 C, hash_many | 15.33 | 8.589 | 8.121 | 123 (16) |
+| BLAKE3 Merkle | 2^14 | official BLAKE3 C, hash_many | 14.97 | 3.118 | 2.762 | 362 (16) |
+| BLAKE3 Merkle | 2^18 | official BLAKE3 C, hash_many | 16.09 | 2.715 | 2.514 | 398 (16) |
+| BLAKE3 Merkle | 2^22 | official BLAKE3 C, hash_many | 16.55 | 3.802 | 3.846 | 263 (8) |
+| BLAKE3-XOF GGM | 2^10 | official BLAKE3 C, compress_xof | 48.06 | 12.777 | 11.041 | 91 (16) |
+| BLAKE3-XOF GGM | 2^10 | ours, 8-way SoA | 102.76 | 23.828 | 24.700 | 42 (8) |
+| BLAKE3-XOF GGM | 2^10 | ours, AVX2 intrinsics | 13.22 | 7.633 | 7.664 | 131 (8) |
+| BLAKE3-XOF GGM | 2^14 | official BLAKE3 C, compress_xof | 48.27 | 7.573 | 5.890 | 170 (16) |
+| BLAKE3-XOF GGM | 2^14 | ours, 8-way SoA | 102.33 | 15.217 | 15.006 | 67 (16) |
+| BLAKE3-XOF GGM | 2^14 | ours, AVX2 intrinsics | 12.78 | 2.832 | 2.527 | 396 (16) |
+| BLAKE3-XOF GGM | 2^18 | official BLAKE3 C, compress_xof | 48.07 | 6.657 | 4.982 | 201 (16) |
+| BLAKE3-XOF GGM | 2^18 | ours, 8-way SoA | 101.75 | 13.996 | 13.929 | 72 (16) |
+| BLAKE3-XOF GGM | 2^18 | ours, AVX2 intrinsics | 13.05 | 1.974 | 1.784 | 561 (16) |
+| BLAKE3-XOF GGM | 2^22 | official BLAKE3 C, compress_xof | 49.02 | 6.680 | 5.516 | 181 (16) |
+| BLAKE3-XOF GGM | 2^22 | ours, 8-way SoA | 103.28 | 13.968 | 15.539 | 72 (8) |
+| BLAKE3-XOF GGM | 2^22 | ours, AVX2 intrinsics | 13.88 | 4.575 | 4.790 | 219 (8) |
+| ChaCha20 GGM | 2^10 | ours, scalar | 77.63 | 17.011 | 15.659 | 64 (16) |
+| ChaCha20 GGM | 2^10 | ours, 8-way SoA | 113.76 | 25.706 | 27.131 | 39 (8) |
+| ChaCha20 GGM | 2^10 | ours, AVX2 intrinsics | 17.51 | 8.606 | 8.144 | 123 (16) |
+| ChaCha20 GGM | 2^14 | ours, scalar | 77.43 | 11.396 | 9.318 | 107 (16) |
+| ChaCha20 GGM | 2^14 | ours, 8-way SoA | 113.29 | 16.644 | 16.605 | 60 (16) |
+| ChaCha20 GGM | 2^14 | ours, AVX2 intrinsics | 17.05 | 3.498 | 3.040 | 329 (16) |
+| ChaCha20 GGM | 2^18 | ours, scalar | 77.03 | 10.580 | 8.501 | 118 (16) |
+| ChaCha20 GGM | 2^18 | ours, 8-way SoA | 112.89 | 15.476 | 15.463 | 65 (16) |
+| ChaCha20 GGM | 2^18 | ours, AVX2 intrinsics | 17.43 | 2.533 | 2.236 | 447 (16) |
+| ChaCha20 GGM | 2^22 | ours, scalar | 78.36 | 10.570 | 8.460 | 118 (16) |
+| ChaCha20 GGM | 2^22 | ours, 8-way SoA | 114.71 | 15.765 | 15.562 | 64 (16) |
+| ChaCha20 GGM | 2^22 | ours, AVX2 intrinsics | 18.16 | 4.639 | 4.840 | 216 (8) |
+| Monolith-31 Merkle | 2^10 | Plonky3 p3-monolith 0.8.0 | 464.20 | 294.400 | 421.980 | 3 (8) |
+| Monolith-31 Merkle | 2^10 | ours, scalar | 1447.74 | 235.090 | 199.873 | 5 (16) |
+| Monolith-31 Merkle | 2^10 | ours, 8-way SoA | 604.98 | 109.981 | 122.087 | 9 (8) |
+| Monolith-31 Merkle | 2^14 | Plonky3 p3-monolith 0.8.0 | 488.00 | 95.666 | 97.346 | 10 (8) |
+| Monolith-31 Merkle | 2^14 | ours, scalar | 1442.89 | 197.932 | 138.341 | 7 (16) |
+| Monolith-31 Merkle | 2^14 | ours, 8-way SoA | 589.97 | 82.563 | 79.887 | 13 (16) |
+| Monolith-31 Merkle | 2^18 | Plonky3 p3-monolith 0.8.0 | 440.44 | 63.592 | 56.167 | 18 (16) |
+| Monolith-31 Merkle | 2^18 | ours, scalar | 1456.00 | 196.949 | 136.041 | 7 (16) |
+| Monolith-31 Merkle | 2^18 | ours, 8-way SoA | 598.66 | 80.620 | 74.670 | 13 (16) |
+| Monolith-31 Merkle | 2^22 | Plonky3 p3-monolith 0.8.0 | 436.25 | 60.359 | 53.269 | 19 (16) |
+| Monolith-31 Merkle | 2^22 | ours, scalar | 1458.87 | 198.051 | 138.082 | 7 (16) |
+| Monolith-31 Merkle | 2^22 | ours, 8-way SoA | 603.31 | 81.155 | 74.097 | 13 (16) |
+| Poseidon2-M31 Merkle | 2^10 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 702.40 | 517.879 | 605.932 | 2 (8) |
+| Poseidon2-M31 Merkle | 2^14 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 704.92 | 140.037 | 137.119 | 7 (16) |
+| Poseidon2-M31 Merkle | 2^18 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 665.82 | 99.190 | 78.830 | 13 (16) |
+| Poseidon2-M31 Merkle | 2^22 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 668.81 | 91.186 | 77.534 | 13 (16) |
 
-## Best CPU implementation per tree (best of 1 / 16 / 16 threads)
+## Best CPU implementation per tree (best of 1 / 8 / 16 threads)
 
 | tree | size | best implementation | ns/node | Mnodes/s | tree time us |
 |---|---:|---|---:|---:|---:|
-| BLAKE3 Merkle | 2^10 | official BLAKE3 C, hash_many | 7.433 | 135 | 7.6 |
-| BLAKE3 Merkle | 2^14 | official BLAKE3 C, hash_many | 2.751 | 364 | 45.1 |
-| BLAKE3 Merkle | 2^18 | official BLAKE3 C, hash_many | 2.426 | 412 | 636.1 |
-| BLAKE3 Merkle | 2^22 | official BLAKE3 C, hash_many | 3.909 | 256 | 16,394.7 |
-| BLAKE3-XOF GGM | 2^10 | official BLAKE3 C, compress_xof | 10.982 | 91 | 11.2 |
-| BLAKE3-XOF GGM | 2^14 | official BLAKE3 C, compress_xof | 5.921 | 169 | 97.0 |
-| BLAKE3-XOF GGM | 2^18 | official BLAKE3 C, compress_xof | 4.999 | 200 | 1,310.5 |
-| BLAKE3-XOF GGM | 2^22 | official BLAKE3 C, compress_xof | 5.513 | 181 | 23,123.2 |
-| ChaCha20 GGM | 2^10 | ours, AVX2 intrinsics | 7.932 | 126 | 8.1 |
-| ChaCha20 GGM | 2^14 | ours, AVX2 intrinsics | 3.001 | 333 | 49.2 |
-| ChaCha20 GGM | 2^18 | ours, AVX2 intrinsics | 2.166 | 462 | 567.8 |
-| ChaCha20 GGM | 2^22 | ours, AVX2 intrinsics | 4.843 | 206 | 20,314.0 |
-| Monolith-31 Merkle | 2^10 | ours, 8-way SoA | 123.974 | 8 | 126.8 |
-| Monolith-31 Merkle | 2^14 | ours, 8-way SoA | 79.842 | 13 | 1,308.1 |
-| Monolith-31 Merkle | 2^18 | Plonky3 p3-monolith 0.8.0 | 54.301 | 18 | 14,234.6 |
-| Monolith-31 Merkle | 2^22 | Plonky3 p3-monolith 0.8.0 | 52.855 | 19 | 221,688.1 |
-| Poseidon2-M31 Merkle | 2^10 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 583.890 | 2 | 597.3 |
-| Poseidon2-M31 Merkle | 2^14 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 137.133 | 7 | 2,246.6 |
-| Poseidon2-M31 Merkle | 2^18 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 79.581 | 13 | 20,861.5 |
-| Poseidon2-M31 Merkle | 2^22 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 77.701 | 13 | 325,901.7 |
+| BLAKE3 Merkle | 2^10 | official BLAKE3 C, hash_many | 8.121 | 123 | 8.3 |
+| BLAKE3 Merkle | 2^14 | official BLAKE3 C, hash_many | 2.762 | 362 | 45.3 |
+| BLAKE3 Merkle | 2^18 | official BLAKE3 C, hash_many | 2.514 | 398 | 659.1 |
+| BLAKE3 Merkle | 2^22 | official BLAKE3 C, hash_many | 3.802 | 263 | 15,945.7 |
+| BLAKE3-XOF GGM | 2^10 | ours, AVX2 intrinsics | 7.633 | 131 | 7.8 |
+| BLAKE3-XOF GGM | 2^14 | ours, AVX2 intrinsics | 2.527 | 396 | 41.4 |
+| BLAKE3-XOF GGM | 2^18 | ours, AVX2 intrinsics | 1.784 | 561 | 467.6 |
+| BLAKE3-XOF GGM | 2^22 | ours, AVX2 intrinsics | 4.575 | 219 | 19,190.6 |
+| ChaCha20 GGM | 2^10 | ours, AVX2 intrinsics | 8.144 | 123 | 8.3 |
+| ChaCha20 GGM | 2^14 | ours, AVX2 intrinsics | 3.040 | 329 | 49.8 |
+| ChaCha20 GGM | 2^18 | ours, AVX2 intrinsics | 2.236 | 447 | 586.1 |
+| ChaCha20 GGM | 2^22 | ours, AVX2 intrinsics | 4.639 | 216 | 19,456.0 |
+| Monolith-31 Merkle | 2^10 | ours, 8-way SoA | 109.981 | 9 | 112.5 |
+| Monolith-31 Merkle | 2^14 | ours, 8-way SoA | 79.887 | 13 | 1,308.8 |
+| Monolith-31 Merkle | 2^18 | Plonky3 p3-monolith 0.8.0 | 56.167 | 18 | 14,723.8 |
+| Monolith-31 Merkle | 2^22 | Plonky3 p3-monolith 0.8.0 | 53.269 | 19 | 223,428.4 |
+| Poseidon2-M31 Merkle | 2^10 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 517.879 | 2 | 529.8 |
+| Poseidon2-M31 Merkle | 2^14 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 137.119 | 7 | 2,246.4 |
+| Poseidon2-M31 Merkle | 2^18 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 78.830 | 13 | 20,664.7 |
+| Poseidon2-M31 Merkle | 2^22 | Plonky3 p3-mersenne-31 Poseidon2 0.8.0 | 77.534 | 13 | 325,199.7 |
