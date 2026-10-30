@@ -10,10 +10,7 @@ J=${JOBS:-16}
   for s in out all; do for tk in 4 5 6 7 8 9; do echo "merkle blake3 $s $tk"; done; done
   for p in chacha blake3; do for s in out k2 all; do for tk in 2 3 4 5 6 7; do echo "ggm $p $s $tk"; done; done; done
   for s in out all; do for tk in 2 3 4 5 6 7 8 9; do echo "merkle mono $s $tk"; done; done
-} | { while read q p s tk; do
-  while [ $(jobs -p | wc -l) -ge $J ]; do sleep 5; done
-  python3 $CT verify/lz3s_16.so $q $p 18 sram=32 gddr=2 store=$s tile=$tk audit > $L/${q}_${p}_store_${s}_tk$tk.log 2>&1 &
-done; wait; }
+} | CT=$CT L=$L xargs -P $J -L 1 sh -c 'python3 $CT verify/lz3s_16.so $0 $1 18 sram=32 gddr=2 store=$2 tile=$3 audit > $L/$0_$1_store_$2_tk$3.log 2>&1'
 for f in $L/*.log; do
   printf "%s " $(basename $f .log); grep -h "^  cycles" $f | awk '{printf "%s ", $2}'; grep -h "SRAM high-water" $f | awk '{printf "%s KB ", $8}'
   grep -qh "check: .*OK" $f && echo OK || { echo FAIL; tail -n 2 $f; }
