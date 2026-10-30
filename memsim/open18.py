@@ -115,6 +115,9 @@ cpu.cpu_store_build.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, U32P]
 cpu.cpu_store_node.restype = U32P; cpu.cpu_store_node.argtypes = [ctypes.c_int, ctypes.c_uint64]
 cpu.cpu_open.restype = ctypes.c_double; cpu.cpu_open.argtypes = [ctypes.c_int, ctypes.c_size_t, U32P, ctypes.POINTER(ctypes.c_uint64), U32P]
 gpu = ctypes.CDLL(os.path.join(REPO, "RTL", "baseline", "gpu_trees2.so"))
+gpu.gpu_init.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+MRC = json.load(open(os.path.join(TOP, "mono_constants.json")))                       # the Monolith round constants into the GPU's constant memory
+assert gpu.gpu_init(bytes(256), b"".join(v.to_bytes(4, "little") for row in MRC for v in row)) == 0
 gpu.open_build.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, U32P]
 gpu.open_off.restype = ctypes.c_uint64; gpu.open_off.argtypes = [ctypes.c_int]
 gpu.open_bench.restype = ctypes.c_double; gpu.open_bench.argtypes = [ctypes.c_size_t, ctypes.POINTER(ctypes.c_uint64), ctypes.c_int, U32P]

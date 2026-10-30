@@ -320,7 +320,8 @@ API double open_bench(size_t n, const uint64_t* off_host, int reps, uint32_t* ou
   uint64_t* d_off; uint32_t* d_out;
   if (cudaMalloc(&d_off, n * 8) != cudaSuccess || cudaMalloc(&d_out, n * 32) != cudaSuccess) return -1.0;
   cudaMemcpy(d_off, off_host, n * 8, cudaMemcpyHostToDevice);
-  gather_k<<<nblk(2 * n), 256>>>(g_store, d_off, d_out, 2 * n); cudaDeviceSynchronize();   // warm-up
+  for (int w = 0; w < 200; w++) gather_k<<<nblk(2 * n), 256>>>(g_store, d_off, d_out, 2 * n);   // warm-up (clocks up)
+  cudaDeviceSynchronize();
   cudaEvent_t t0, t1; cudaEventCreate(&t0); cudaEventCreate(&t1);
   cudaEventRecord(t0);
   for (int rep = 0; rep < reps; rep++) gather_k<<<nblk(2 * n), 256>>>(g_store, d_off, d_out, 2 * n);
