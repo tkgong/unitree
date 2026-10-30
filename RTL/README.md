@@ -71,7 +71,14 @@ WORK=work_t10 sh RTL/syn/repair.sh shared  # OpenROAD repair at 1 GHz -> syn/wor
 WORK=work_t10 NL=rep sh RTL/benchmark/timing/sta.sh shared
 WORK=work_t10 sh RTL/benchmark/power/run_all.sh                # measured-activity power, all eight (top, program) pairs
 sh RTL/syn/syn.sh && python3 RTL/benchmark/area/report.py      # area-mapped sharing (syn/work)
+sh RTL/test/regress.sh                     # all of the above but power, logs in test/regress/
 ```
+
+`regress.sh` (2026-10-29, at commit 1ecb32d): 4/4 proofs; the datapath 140/140 states (NL = 0, 216; KS45 at NL = 0); all
+eight traces 0 mismatching words (mono also with KS45); the four timing-flow netlists byte-identical to `syn/work_t10`
+(the measured ones), WNS 0.00 with flip-flop-driven inputs; area-mapped sharing 8.9 / 21.2 / 39.7 / 30.4% (logic / ALU /
+registers / total). Verilator cannot build the ChaCha20 / BLAKE3 / shared tops with the KS45 cells in 62 GB; those are
+covered by the proofs and by the gate-level replay of their netlists in `benchmark/power/` (0 phases differing).
 
 The previous designs (the HLS-generated bz3 unit in `RTL/pe`, its accelerator shell `RTL/fsm`, the per-ALU ORFS runs
 `RTL/syn`, the standalone ALU testbench `RTL/verify`) were removed on 2026-10-28; they are in the git history (last at
