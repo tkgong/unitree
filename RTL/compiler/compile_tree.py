@@ -835,10 +835,16 @@ ok &= all(nd.done and nd.result == merkle_fn(nd.prim, nd.kids[0].result, nd.kids
 cycles = len(prog)
 mono_issues = sum(r["mono"] for r in prog)
 exec_issues = [sum(1 for r in prog for i in r["issue"] if i[1] == ri) for ri in range(len(rings))]
+# per-engine utilization: node traversals issued on each ARX ring over its blocks x cycles (a slot may carry fewer nodes than
+# the ring has blocks), Monolith issues over datapaths x cycles
+ring_nt = [sum(len(i[3]) for r in prog for i in r["issue"] if i[1] == ri) for ri in range(len(rings))]
+util = [f"ring {ri}: {ring_nt[ri] / (len(R['blocks']) * cycles):.4f}" for ri, R in enumerate(rings) if ring_nt[ri]]
+if mono_issues: util.append(f"Monolith: {mono_issues / (len(BASES) * cycles):.4f}")
 desc = {"merkle": lambda: f"{NT} x {MNAME[prim]} Merkle 2^{SZ} leaves ({ORDER})", "ggm": lambda: f"{NT} x {MNAME[prim]} GGM depth {SZ} ({ORDER})"}[REQ]()
 print(f"request: {desc}   unit: {NDP} Monolith ring(s) of {KM} slots x {NISS[4]} traversals; ARX rings {[(len(R['blocks']), R['K']) for R in rings]} (blocks, period = sum over spans of latency + 1)")
 print(f"  nodes computed      {work_total:,}")
 print(f"  cycles              {cycles:,}   (Monolith issues {mono_issues:,}; ARX ring traversals {exec_issues})")
+print(f"  engine utilization  {', '.join(util)}   (node traversals issued / (blocks x cycles); Monolith issues / (datapaths x cycles))")
 print(f"  throughput          {work_total / cycles:.3f} nodes/cycle")
 print(f"  memory traffic      {mem_reads:,} reads, {mem_writes:,} writes of 32 B ({32 * (mem_reads + mem_writes) / cycles:.1f} B/cycle); live buffer high-water {live_max:,} x 32 B")
 print(f"  pending queue       high-water {ready_max:,} ready nodes waiting for a slot (seeds / parents not yet issued)")
