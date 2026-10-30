@@ -79,12 +79,17 @@ across consecutive subtrees by the DFS order, so TK < 5 costs no row efficiency.
 
 ### 3.1 Store policy
 
-| program | K = 0 (all) | k2 | k4 | out | model |
-|---|---:|---:|---:|---:|---|
-| ChaCha20 GGM | 386,185 | 238,616 | PENDING | 205,834 | 381k / 238k / compute-bound |
-| BLAKE3 GGM | 388,093 | 238,773 | PENDING | 205,993 | |
-| BLAKE3 Merkle | 406,546 (TK 9) | PENDING | PENDING | 206,390 | 381k / 238k / compute-bound |
-| Monolith Merkle | PENDING | PENDING | PENDING | 919,735 | compute-bound at every K |
+| program (cycles) | K = 0 (all) | k1 | k2 | k3 | k4 | k5 | out | model: traffic / 44 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| ChaCha20 GGM | 386,185 | 283,508 | 238,616 | 216,468 | **205,671** | 205,858 | 205,834 | 381k / 286k / 238k / 214k / fits / fits |
+| BLAKE3 GGM | 388,093 | 283,486 | 238,773 | 216,621 | **205,966** | 205,851 | 205,993 | same |
+| BLAKE3 Merkle | 408,012 | 321,089 | 238,616 (tile run) | 244,465 | 214,987 | **209,696** | 206,390 | same; reads + writes mixed |
+| Monolith Merkle | **919,736** | | 919,736 | | 919,736 | | 919,735 | compute-bound at every K |
+
+GGM: K = 4 is compute-bound as computed (the write stream alone). Merkle ARX: the same traffic costs +4.2% at K = 4 and +1.6%
+at K = 5: its stream is reads (93% of the usable rate) plus writes, and the read / write turnarounds cost what the
+bytes-only model does not see; the Merkle policy takes K = 5 (the margin), the GGM policy K = 4. Monolith: every K gives
+the compute bound, K = 0 (store everything) is free.
 
 ### 3.2 Merkle tile (store=out; compute bound 203,889)
 
@@ -121,7 +126,25 @@ write exceed the CAP / 4 budget and are written partial (more activations); TK =
 
 ## 4. Ablation: adaptive policy vs one rigid policy for all
 
-Adaptive = the policy of sections 2.1-2.3 per primitive and direction: ARX Merkle TK 8, ARX GGM TK 3, Monolith Merkle TK 6,
-K = 4 for ARX, K = 0 for Monolith. Rigid policies fix one setting for every program.
+Adaptive = the policy of sections 2.1-2.3 per primitive and direction: ARX Merkle TK 8 / K 5, ARX GGM TK 3 / K 4, Monolith
+Merkle TK 6..8 / K 0. Rigid policies fix one setting for every program. Per-engine utilization in brackets (`ablation18/`,
+`tile18/`, `store18/`; every run audited and bit-exact).
 
-PENDING (ablation18/)
+| policy | BLAKE3 Merkle | ChaCha20 GGM | BLAKE3 GGM | Monolith Merkle |
+|---|---:|---:|---:|---:|
+| **adaptive** | 209,696 (97.2%) | 205,491 (99.2%) | 205,508 (99.2%) | 919,736 (99.8%) |
+| one subtree size for both directions: TK 8 (the Merkle one) | = | 247,827 (82%) **-17%** | 247,369 (82%) **-17%** | = |
+| one subtree size for both directions: TK 3 (the GGM one) | 432,133 (47%) **-52%** | = | = | 977,309 (94%) -6% |
+| one store policy: keep everything | 408,012 (50%) **-49%** | 386,185 (53%) **-47%** | 388,093 (53%) **-47%** | = |
+| Monolith's settings for all (TK 6, keep everything) | 461,320 (44%) **-55%** | 448,875 (45%) **-54%** | 450,591 (45%) **-54%** | = |
+| ARX's settings for all (K 4 / 5, TK 8 Merkle, TK 3 GGM) | = | = | = | 919,736 (99.8%): commit unchanged; **the open pays** (section 5) |
+
+No rigid setting is good for both primitive classes. The settings that suit Monolith (store everything, mid-size tiles)
+halve the ARX utilization; the settings that suit ARX cost Monolith nothing at commit time but make its opens recompute
+what it could have stored for free, and with Monolith's 4.5x lower hash throughput that recompute is 7-10x the K = 0 open
+(section 5: measured against the CPU and the GPU, `open18.md`).
+
+## 5. The open: CPU / GPU / unit
+
+`memsim/open18.py`, results in `open18.md` (the same opened sets on the three platforms, the GPU's output checked node by
+node against the CPU's stored tree).

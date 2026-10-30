@@ -36,7 +36,10 @@ REPS = int(next((a[5:] for a in sys.argv[1:] if a.startswith("reps=")), "20"))
 CT = os.path.join(REPO, "RTL", "compiler", "compile_tree.py"); TOP = os.path.join(REPO, "dse", "TOP"); SO = "verify/lz3s_16.so"
 OUT = os.path.join(HERE, "results"); os.makedirs(OUT, exist_ok=True)
 # (request, primitive, kind of cpu_trees / gpu_trees2, cpu impl, K, measured power of the shared unit on this program, W)
-PROGS = [("merkle", "blake3", 1, 0, 4, 3.66), ("ggm", "chacha", 3, 2, 4, 3.49), ("ggm", "blake3", 2, 2, 4, 3.42), ("merkle", "mono", 4, 1, 0, 3.77)]
+PROGS = [("merkle", "blake3", 1, 0, 5, 3.66), ("ggm", "chacha", 3, 2, 4, 3.49), ("ggm", "blake3", 2, 2, 4, 3.42), ("merkle", "mono", 4, 1, 0, 3.77)]
+if "rigid" in sys.argv[1:]:                                                           # the ablation's rigid store policies: ARX's K on Monolith, keep-everything on ARX
+    PROGS = [("merkle", "mono", 4, 1, 4, 3.77), ("merkle", "blake3", 1, 0, 0, 3.66), ("ggm", "chacha", 3, 2, 0, 3.49), ("ggm", "blake3", 2, 2, 0, 3.42)]
+SUF = "_rigid" if "rigid" in sys.argv[1:] else ""
 NAME = {1: "BLAKE3 Merkle", 2: "BLAKE3 GGM", 3: "ChaCha20 GGM", 4: "Monolith-31 Merkle"}
 IDLE_W = {}                                                                           # unit idle power (syn/work_t10/pw_idle.txt)
 for ln in open(os.path.join(REPO, "RTL", "syn", "work_t10", "pw_idle.txt")) if os.path.exists(os.path.join(REPO, "RTL", "syn", "work_t10", "pw_idle.txt")) else []:
@@ -168,7 +171,7 @@ for (req, prim, kind, impl, K, PW) in PROGS:
         print(f"{NAME[kind]:19} q={q:6} opened {len(sets[0]):6}/tree: unit {u['cyc_stream']:>8,} + {u['cyc_prog']:>8,} = {u_cyc:>8,} cyc ({u_nj / 1e3:8.1f} uJ/tree); "
               f"GPU {g_ns / 1e3:9.1f} us/8 trees ({g_uj_tree:7.1f} uJ/tree above idle); CPU {c_ns / 1e3:9.1f} us/8 trees; "
               f"speedup vs GPU {g_ns / u_cyc:5.2f}x, vs CPU {c_ns / u_cyc:6.1f}x; GPU check {'OK' if bad == 0 else f'{bad} BAD'}", flush=True)
-json.dump(rows, open(os.path.join(OUT, "open18.json"), "w"), indent=1)
+json.dump(rows, open(os.path.join(OUT, f"open18{SUF}.json"), "w"), indent=1)
 L = [f"# Opening q leaves of a 2^18 tree: CPU / GPU / unit (dana336, {time.strftime('%Y-%m-%d')})", "",
      f"See the docstring of `memsim/open18.py` for the method. Unit: one core per tree, 2 GDDR6 channels, 1 GHz, adaptive K (ARX 4, Monolith 0); unit idle power {P_IDLE:.3f} W "
      f"(vectorless, no data toggling), program power from `power.md`; the DRAM's energy is not in the unit's number. GPU: RTX 3070, 8 trees per call, idle {GPU_IDLE:.1f} W. CPU: i7-10700K, {THREADS} threads, 8 trees in sequence; no energy (RAPL root-only).", "",
@@ -177,5 +180,5 @@ L = [f"# Opening q leaves of a 2^18 tree: CPU / GPU / unit (dana336, {time.strft
 for r in rows:
     L.append(f"| {r['program']} | {r['q']:,} | {r['opened_per_tree']:,} | {r['read']:,} | {r['recomputed']:,} | {r['cyc_stream']:,} | {r['cyc_prog']:,}" + (f" ({r['prog']}, +{100 * r['prog_overhead']:.0f}%)" if r['prog'] else "") +
              f" | {r['unit_cycles_8_trees'] / 1e3:.1f} | {r['unit_nJ_per_tree'] / 1e3:.1f} | {r['gpu_ns_8_trees'] / 1e3:.1f} | {r['gpu_uJ_per_tree_above_idle']:.1f} ({r['gpu_uJ_per_tree_board']:.1f}) | {r['cpu_ns_8_trees'] / 1e3:.1f} | {r['speedup_vs_gpu']:.2f}x | {r['speedup_vs_cpu']:.1f}x | {r['energy_gpu_above_idle_over_unit']:.1f}x | {'OK' if r['gpu_check_bad'] == 0 else 'BAD'} |")
-open(os.path.join(OUT, "open18.md"), "w").write("\n".join(L) + "\n")
+open(os.path.join(OUT, f"open18{SUF}.md"), "w").write("\n".join(L) + "\n")
 cpu.cpu_stop()
