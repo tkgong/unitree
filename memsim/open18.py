@@ -66,8 +66,20 @@ def addr(l, j):
 PROOF = 512 << 20                                                                     # the proof is written here, sequentially
 
 def unit_open(req, prim, K, qs, tag):
-    """-> dict: the unit's cycles (a) stream, (b) recompute, overhead, counts"""
+    """-> dict: the unit's cycles. Merkle: one compiled program (compile_tree.py open: stored siblings read, unstored ones
+    recomputed, every path hashed to the committed root, the proof written; closed loop on the GDDR6 model). GGM: (a) the
+    co-path stream, (b) the recompute of the K unstored levels."""
     need, stored, low = opened(req, qs, K)
+    if req == "merkle":
+        cmd = ["python3", CT, SO, "open", prim, str(SZ), f"q={len(qs)}", "sram=32", f"gddr={CH}", f"store=k{K}" if K else "store=all", "audit"]
+        out = subprocess.run(cmd, cwd=TOP, capture_output=True, text=True).stdout
+        cyc = next((int(ln.split()[1].replace(",", "")) for ln in out.splitlines() if ln.startswith("  cycles")), None)
+        ut = next((ln for ln in out.splitlines() if ln.startswith("  engine utilization")), "")
+        util = [float(x.split(":")[1]) for x in ut.split("(")[0].replace("  engine utilization  ", "").split(",") if ":" in x]
+        assert cyc is not None and "reference: OK" in out and "audit               OK" in out, out[-3000:]
+        comp = int(next(ln for ln in out.splitlines() if ln.startswith("request:")).split("compressions")[0].split(",")[-1].strip().replace(",", ""))
+        return {"opened": len(need), "read": len(need) - len(low) + (0 if K == 0 else sum(1 for _ in low)), "written": len(need), "recomputed": len(low), "cyc_stream": 0,
+                "act": 0, "row_hit": 0, "lat_avg": 0, "cyc_prog": cyc, "prog_nodes": comp, "prog_overhead": 0.0, "prog": " ".join(cmd[3:]), "util": sum(util) / len(util) if util else 0}
     exp = set()
     if req == "ggm" and low:                                                          # the path nodes expanded: lam 2 .. K + 1 of the paths with unstored siblings
         for (l, j) in low:
@@ -84,26 +96,37 @@ def unit_open(req, prim, K, qs, tag):
     for w in range(wf, len(wr)): addrs.append(PROOF + w * 32); flags.append(True)
     cyc_a, st, lat = hbm.batch(addrs, channels=CH, mapper="RoBaRaCoCh", write=flags, port=CH, nbl=2, kind="gddr")
     r = {"opened": len(need), "read": len(rd), "written": len(wr), "recomputed": len(low), "cyc_stream": cyc_a,
-         "act": st["ACT"], "row_hit": st["row_hit"], "lat_avg": (sum(lat) / len(lat)) if lat else 0, "cyc_prog": 0, "prog_nodes": 0, "prog_overhead": 0.0, "prog": ""}
+         "act": st["ACT"], "row_hit": st["row_hit"], "lat_avg": (sum(lat) / len(lat)) if lat else 0, "cyc_prog": 0, "prog_nodes": 0, "prog_overhead": 0.0, "prog": "", "util": 1.0}
     if not low: return r
-    if req == "merkle":
-        chunks = sorted({(j << l) >> K for (l, j) in low})                            # the 2^K-leaf subtrees holding the needed siblings
-        nv = 1 << (len(chunks) - 1).bit_length()
-        lm = os.path.join(OUT, f"leafmap_{tag}.txt")
-        open(lm, "w").write("\n".join(str((chunks[c] if c < len(chunks) else chunks[-1]) << (K + 5)) for c in range(nv)) + "\n")   # byte base of chunk c (2^K leaves x 32 B)
-        szv = K + (nv.bit_length() - 1)
-        cmd = ["python3", CT, SO, "merkle", prim, str(szv), "sram=32", f"gddr={CH}", "store=out", f"leafmap={lm}", "audit"]
-        r["prog_nodes"] = (1 << szv) - 1; r["prog_overhead"] = ((1 << szv) - 1) / (len(chunks) * ((1 << K) - 1)) - 1   # padding + the top above the subtrees
-    else:
-        n = len(exp)
-        cmd = ["python3", CT, SO, "ggm", prim, "1", f"x{n}"]
-        r["prog_nodes"] = n; r["prog_overhead"] = 0.0
+    n = len(exp)
+    cmd = ["python3", CT, SO, "ggm", prim, "1", f"x{n}"]
+    r["prog_nodes"] = n; r["prog_overhead"] = 0.0
     r["prog"] = " ".join(cmd[2:])
     out = subprocess.run(cmd, cwd=TOP, capture_output=True, text=True).stdout
     cyc = next((int(ln.split()[1].replace(",", "")) for ln in out.splitlines() if ln.startswith("  cycles")), None)
     assert cyc is not None and "reference: OK" in out, out[-2000:]
-    r["cyc_prog"] = cyc + ((K - 1) * 98 if req == "ggm" else 0)
+    r["cyc_prog"] = cyc + (K - 1) * 98
     return r
+
+def path_lists(sets_leaves, T):
+    """-> (leaf store offsets, n_l[0..SZ], src_all) for the GPU's level-synchronous path hashing over T trees: level l holds
+    the distinct path nodes (tree-major); a source is a computed node's position in level l-1, or a stored sibling (bit 63)."""
+    leaf, n_l, src = [], [0] * (SZ + 1), []
+    cur = []                                                                          # (tree, idx) of level l-1, sorted; positions = list order
+    for t, qs in enumerate(sets_leaves):
+        for i in sorted(set(qs)): cur.append((t, i)); leaf.append(gpu.open_off(0) + (t << SZ) + i)
+    n_l[0] = len(cur)
+    for l in range(1, SZ + 1):
+        up = []
+        for (t, j) in cur:
+            if not up or up[-1] != (t, j >> 1): up.append((t, j >> 1))
+        pos = {x: p for p, x in enumerate(cur)}
+        for (t, j) in up:
+            for c in (0, 1):
+                ch = (t, 2 * j + c)
+                src.append(pos[ch] if ch in pos else ((1 << 63) | (gpu.open_off(l - 1) + (t << (SZ - l + 1)) + 2 * j + c)))
+        n_l[l] = len(up); cur = up
+    return leaf, n_l, src
 
 class GpuPower:                                                                       # nvidia-smi sampler (RTL/baseline/run_energy.py)
     def __init__(self):
@@ -128,6 +151,11 @@ assert gpu.gpu_init(bytes(256), b"".join(v.to_bytes(4, "little") for row in MRC 
 gpu.open_build.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, U32P]
 gpu.open_off.restype = ctypes.c_uint64; gpu.open_off.argtypes = [ctypes.c_int]
 gpu.open_bench.restype = ctypes.c_double; gpu.open_bench.argtypes = [ctypes.c_size_t, ctypes.POINTER(ctypes.c_uint64), ctypes.c_int, U32P]
+U64P = ctypes.POINTER(ctypes.c_uint64)
+gpu.open_paths_build.argtypes = [ctypes.c_int, ctypes.c_size_t, U64P, U64P, U64P]
+gpu.open_paths_bench.restype = ctypes.c_double; gpu.open_paths_bench.argtypes = [ctypes.c_int, ctypes.c_int, U32P]
+cpu.cpu_open_paths.restype = ctypes.c_double; cpu.cpu_open_paths.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, U64P, U32P, ctypes.c_int]
+def u64(a): return (ctypes.c_uint64 * len(a)).from_buffer(a)
 def u32(a): return (ctypes.c_uint32 * len(a)).from_buffer(a)
 THREADS = os.cpu_count() or 16
 cpu.cpu_init(THREADS)
@@ -148,41 +176,57 @@ for (req, prim, kind, impl, K, PW) in PROGS:
         # ---- unit: tree 0's set (the trees are statistically identical) ----
         u = unit_open(req, prim, K, qsets[0], f"{req}_{prim}_q{q}")
         u_cyc = u["cyc_stream"] + u["cyc_prog"]
-        u_nj = P_IDLE * u["cyc_stream"] + PW * u["cyc_prog"]                            # W x ns = nJ
-        # ---- GPU: the 8 sets in one gather ----
-        offs = array("Q");
+        u_nj = P_IDLE * u["cyc_stream"] + (P_IDLE + (PW - P_IDLE) * u["util"]) * u["cyc_prog"]   # W x ns = nJ; the program's power scaled by its engine utilization
+        # ---- GPU: the 8 sets in one gather (the proof), then (Merkle) the paths hashed to the roots, level by level ----
+        offs = array("Q")
         for t, s in enumerate(sets):
             offs.extend(gpu.open_off(l) + (t << (SZ - l)) + j for (l, j) in s)
         ntot = len(offs); gout = array("I", bytes(ntot * 32))
-        g_ns = gpu.open_bench(ntot, (ctypes.c_uint64 * ntot).from_buffer(offs), REPS, u32(gout))
-        assert g_ns > 0, "GPU gather"
-        reps_e = max(REPS, int(5e9 / g_ns)); te0 = time.time(); gpu.open_bench(ntot, (ctypes.c_uint64 * ntot).from_buffer(offs), reps_e, None); te1 = time.time()
-        g_w, ns_ = pw.mean(te0, te1); g_uj_tree = (g_w - GPU_IDLE) * (te1 - te0) / reps_e / T * 1e6; g_uj_board = g_w * (te1 - te0) / reps_e / T * 1e6
-        # ---- CPU: tree by tree, 16 threads; the GPU's gather checked against the CPU's stored tree ----
-        c_ns = 0.0; bad = 0; k0 = 0
+        g_ns = gpu.open_bench(ntot, u64(offs), REPS, u32(gout)); assert g_ns > 0, "GPU gather"
+        reps_e = max(REPS, int(5e9 / g_ns)); te0 = time.time(); gpu.open_bench(ntot, u64(offs), reps_e, None); te1 = time.time()
+        g_w, _ = pw.mean(te0, te1); g_j = (g_w - GPU_IDLE) * (te1 - te0) / reps_e; g_jb = g_w * (te1 - te0) / reps_e
+        g_ns_paths = 0.0; groots = None
+        if merkle:
+            leaf, n_l, src = path_lists(qsets, T)
+            la, na, sa = array("Q", leaf), array("Q", n_l), array("Q", src)
+            assert gpu.open_paths_build(SZ, len(la), u64(la), u64(na), u64(sa)) == 0, "GPU paths build"
+            groots = array("I", bytes(T * 32))
+            g_ns_paths = gpu.open_paths_bench(kind, REPS, u32(groots)); assert g_ns_paths > 0, "GPU paths"
+            reps_p = max(REPS, int(5e9 / g_ns_paths)); tp0 = time.time(); gpu.open_paths_bench(kind, reps_p, None); tp1 = time.time()
+            g_wp, _ = pw.mean(tp0, tp1); g_j += (g_wp - GPU_IDLE) * (tp1 - tp0) / reps_p; g_jb += g_wp * (tp1 - tp0) / reps_p
+        g_tot = g_ns + g_ns_paths; g_uj_tree = g_j / T * 1e6; g_uj_board = g_jb / T * 1e6
+        # ---- CPU: tree by tree, all threads: the gather, then (Merkle) the paths; the GPU's gather and roots checked against the CPU's stored tree ----
+        c_ns = c_ns_paths = 0.0; bad = 0; k0 = 0
         for t in range(T):
             cpu.cpu_store_build(kind, impl, SZ, u32(ins[t]))
             s = sets[t]; lv = array("I", (l for (l, j) in s)); ix = array("Q", (j for (l, j) in s)); cout = array("I", bytes(len(s) * 32))
-            c_ns += cpu.cpu_open(REPS, len(s), u32(lv), (ctypes.c_uint64 * len(s)).from_buffer(ix), u32(cout))
+            c_ns += cpu.cpu_open(REPS, len(s), u32(lv), u64(ix), u32(cout))
             for k, (l, j) in enumerate(s):
                 node = cpu.cpu_store_node(l, j)
                 if gout[(k0 + k) * 8:(k0 + k + 1) * 8] != array("I", node[:8]) or cout[k * 8:(k + 1) * 8] != array("I", node[:8]): bad += 1
             k0 += len(s)
+            if merkle:
+                ql = array("Q", qsets[t]); croot = array("I", bytes(32))
+                c_ns_paths += cpu.cpu_open_paths(kind, impl, SZ, q, u64(ql), u32(croot), REPS)
+                root = array("I", cpu.cpu_store_node(SZ, 0)[:8])
+                if croot != root or groots[t * 8:(t + 1) * 8] != root: bad += 1000
+        c_tot = c_ns + c_ns_paths
         row = {"program": NAME[kind], "q": q, "K": K, "opened_per_tree": len(sets[0]), **u, "unit_cycles_8_trees": u_cyc, "unit_nJ_per_tree": u_nj,
-               "gpu_ns_8_trees": g_ns, "gpu_uJ_per_tree_above_idle": g_uj_tree, "gpu_uJ_per_tree_board": g_uj_board, "gpu_W": g_w, "cpu_ns_8_trees": c_ns, "cpu_threads": THREADS,
-               "speedup_vs_gpu": g_ns / u_cyc, "speedup_vs_cpu": c_ns / u_cyc, "energy_gpu_above_idle_over_unit": (g_uj_tree * 1e3) / u_nj if u_nj else 0, "gpu_check_bad": bad}
+               "gpu_ns_gather": g_ns, "gpu_ns_paths": g_ns_paths, "gpu_ns_8_trees": g_tot, "gpu_uJ_per_tree_above_idle": g_uj_tree, "gpu_uJ_per_tree_board": g_uj_board,
+               "cpu_ns_gather": c_ns, "cpu_ns_paths": c_ns_paths, "cpu_ns_8_trees": c_tot, "cpu_threads": THREADS,
+               "speedup_vs_gpu": g_tot / u_cyc, "speedup_vs_cpu": c_tot / u_cyc, "energy_gpu_above_idle_over_unit": (g_uj_tree * 1e3) / u_nj if u_nj else 0, "check_bad": bad}
         rows.append(row)
-        print(f"{NAME[kind]:19} q={q:6} opened {len(sets[0]):6}/tree: unit {u['cyc_stream']:>8,} + {u['cyc_prog']:>8,} = {u_cyc:>8,} cyc ({u_nj / 1e3:8.1f} uJ/tree); "
-              f"GPU {g_ns / 1e3:9.1f} us/8 trees ({g_uj_tree:7.1f} uJ/tree above idle); CPU {c_ns / 1e3:9.1f} us/8 trees; "
-              f"speedup vs GPU {g_ns / u_cyc:5.2f}x, vs CPU {c_ns / u_cyc:6.1f}x; GPU check {'OK' if bad == 0 else f'{bad} BAD'}", flush=True)
+        print(f"{NAME[kind]:19} q={q:6} opened {len(sets[0]):6}/tree: unit {u['cyc_stream']:>7,} + {u['cyc_prog']:>8,} = {u_cyc:>8,} cyc ({u_nj / 1e3:7.1f} uJ/tree); "
+              f"GPU {g_ns / 1e3:7.1f} + {g_ns_paths / 1e3:7.1f} = {g_tot / 1e3:8.1f} us/8 trees ({g_uj_tree:7.1f} uJ/tree above idle); CPU {c_ns / 1e3:7.1f} + {c_ns_paths / 1e3:8.1f} us/8 trees; "
+              f"vs GPU {g_tot / u_cyc:5.2f}x, vs CPU {c_tot / u_cyc:6.1f}x; check {'OK' if bad == 0 else f'{bad} BAD'}", flush=True)
 json.dump(rows, open(os.path.join(OUT, f"open18{SUF}.json"), "w"), indent=1)
 L = [f"# Opening q leaves of a 2^18 tree: CPU / GPU / unit (dana336, {time.strftime('%Y-%m-%d')})", "",
      f"See the docstring of `memsim/open18.py` for the method. Unit: one core per tree, 2 GDDR6 channels, 1 GHz, adaptive K (ARX 4, Monolith 0); unit idle power {P_IDLE:.3f} W "
      f"(vectorless, no data toggling), program power from `power.md`; the DRAM's energy is not in the unit's number. GPU: RTX 3070, 8 trees per call, idle {GPU_IDLE:.1f} W. CPU: i7-10700K, {THREADS} threads, 8 trees in sequence; no energy (RAPL root-only).", "",
-     "| program | q | opened nodes / tree | read | recomputed | unit stream cycles | unit recompute cycles (program, overhead) | unit total us (8 trees) | unit uJ / tree | GPU us (8 trees) | GPU uJ / tree above idle (board) | CPU us (8 trees) | vs GPU | vs CPU | energy vs GPU above idle | GPU check |",
-     "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
+     "| program | q | opened nodes / tree | recomputed | unit cycles: GGM stream + program / Merkle open program (engine utilization) | unit us (8 trees) | unit uJ / tree | GPU us gather + paths (8 trees) | GPU uJ / tree above idle (board) | CPU us gather + paths (8 trees) | vs GPU | vs CPU | energy vs GPU above idle | check |",
+     "|---|---:|---:|---:|---|---:|---:|---|---:|---|---:|---:|---:|---|"]
 for r in rows:
-    L.append(f"| {r['program']} | {r['q']:,} | {r['opened_per_tree']:,} | {r['read']:,} | {r['recomputed']:,} | {r['cyc_stream']:,} | {r['cyc_prog']:,}" + (f" ({r['prog']}, +{100 * r['prog_overhead']:.0f}%)" if r['prog'] else "") +
-             f" | {r['unit_cycles_8_trees'] / 1e3:.1f} | {r['unit_nJ_per_tree'] / 1e3:.1f} | {r['gpu_ns_8_trees'] / 1e3:.1f} | {r['gpu_uJ_per_tree_above_idle']:.1f} ({r['gpu_uJ_per_tree_board']:.1f}) | {r['cpu_ns_8_trees'] / 1e3:.1f} | {r['speedup_vs_gpu']:.2f}x | {r['speedup_vs_cpu']:.1f}x | {r['energy_gpu_above_idle_over_unit']:.1f}x | {'OK' if r['gpu_check_bad'] == 0 else 'BAD'} |")
+    L.append(f"| {r['program']} | {r['q']:,} | {r['opened_per_tree']:,} | {r['recomputed']:,} | " + (f"{r['cyc_stream']:,} + {r['cyc_prog']:,}" if r['cyc_stream'] else f"{r['cyc_prog']:,} ({100 * r['util']:.0f}%)") +
+             f" | {r['unit_cycles_8_trees'] / 1e3:.1f} | {r['unit_nJ_per_tree'] / 1e3:.1f} | {r['gpu_ns_gather'] / 1e3:.1f} + {r['gpu_ns_paths'] / 1e3:.1f} = {r['gpu_ns_8_trees'] / 1e3:.1f} | {r['gpu_uJ_per_tree_above_idle']:.1f} ({r['gpu_uJ_per_tree_board']:.1f}) | {r['cpu_ns_gather'] / 1e3:.1f} + {r['cpu_ns_paths'] / 1e3:.1f} = {r['cpu_ns_8_trees'] / 1e3:.1f} | {r['speedup_vs_gpu']:.2f}x | {r['speedup_vs_cpu']:.1f}x | {r['energy_gpu_above_idle_over_unit']:.1f}x | {'OK' if r['check_bad'] == 0 else 'BAD'} |")
 open(os.path.join(OUT, f"open18{SUF}.md"), "w").write("\n".join(L) + "\n")
 cpu.cpu_stop()

@@ -315,6 +315,63 @@ __global__ void gather_k(const uint32_t* __restrict__ store, const uint64_t* __r
   if (k >= n2) return;
   ((uint4*)(out + (k >> 1) * 8))[k & 1] = ((const uint4*)(store + off[k >> 1] * 8))[k & 1];
 }
+// ---------------- opening: the paths hashed to the root, level by level over the distinct path nodes of the T trees ----------------
+// open_paths_build (host-side lists, not timed): level 0 = the n0 opened leaves (store node offsets); level l = n_l[l] distinct
+// path nodes, each with two sources src[2k], src[2k+1]: bit 63 set = a stored sibling (store node offset), clear = the
+// position of a computed node in level l-1. open_paths_bench: level 0 gather, then L level kernels; kernel time -> ns per call.
+template <int K, bool OPT>
+__global__ void path_level_k(const uint32_t* __restrict__ store, const uint32_t* __restrict__ prev, const uint64_t* __restrict__ src, uint32_t* __restrict__ out, size_t n, uint32_t flags)
+{
+  size_t k = blockIdx.x * (size_t)blockDim.x + threadIdx.x;
+  if (k >= n) return;
+  uint32_t x[16];
+#pragma unroll
+  for (int c = 0; c < 2; c++)
+  {
+    uint64_t s = src[2 * k + c];
+    const uint4* p = (const uint4*)((s >> 63) ? store + (s & ~(1ull << 63)) * 8 : prev + s * 8);
+    uint4 a = p[0], b = p[1];
+    x[8 * c] = a.x; x[8 * c + 1] = a.y; x[8 * c + 2] = a.z; x[8 * c + 3] = a.w; x[8 * c + 4] = b.x; x[8 * c + 5] = b.y; x[8 * c + 6] = b.z; x[8 * c + 7] = b.w;
+  }
+  merkle_node<K, OPT>(x, out + 8 * k, flags);
+}
+static int p_L = 0; static size_t p_n[64]; static uint64_t* p_leaf = nullptr; static uint64_t* p_src = nullptr; static size_t p_srcoff[64]; static uint32_t *p_a = nullptr, *p_b = nullptr;
+API int open_paths_build(int L, size_t n0, const uint64_t* leaf_off, const uint64_t* n_l, const uint64_t* src_all)
+{
+  p_L = L; p_n[0] = n0; size_t tot = 0, mx = n0;
+  for (int l = 1; l <= L; l++) { p_n[l] = (size_t)n_l[l]; p_srcoff[l] = tot; tot += 2 * p_n[l]; if (p_n[l] > mx) mx = p_n[l]; }
+  if (p_leaf) { cudaFree(p_leaf); cudaFree(p_src); cudaFree(p_a); cudaFree(p_b); }
+  if (cudaMalloc(&p_leaf, n0 * 8) != cudaSuccess || cudaMalloc(&p_src, tot * 8 + 8) != cudaSuccess || cudaMalloc(&p_a, mx * 32) != cudaSuccess || cudaMalloc(&p_b, mx * 32) != cudaSuccess) return -1;
+  cudaMemcpy(p_leaf, leaf_off, n0 * 8, cudaMemcpyHostToDevice);
+  cudaMemcpy(p_src, src_all, tot * 8, cudaMemcpyHostToDevice);
+  return 0;
+}
+static void path_levels(int kind)
+{
+  gather_k<<<nblk(2 * p_n[0]), 256>>>(g_store, p_leaf, p_a, 2 * p_n[0]);
+  uint32_t* cur = p_a; uint32_t* nxt = p_b;
+  for (int l = 1; l <= p_L; l++)
+  {
+    uint32_t flags = l == p_L ? (4 | 8) : 4;
+    if (kind == 1) path_level_k<1, false><<<nblk(p_n[l]), 256>>>(g_store, cur, p_src + p_srcoff[l], nxt, p_n[l], flags);
+    else path_level_k<4, true><<<nblk(p_n[l]), 256>>>(g_store, cur, p_src + p_srcoff[l], nxt, p_n[l], flags);
+    uint32_t* x = cur; cur = nxt; nxt = x;
+  }
+  if (cur != p_a) cudaMemcpyAsync(p_a, cur, p_n[p_L] * 32, cudaMemcpyDeviceToDevice);
+}
+API double open_paths_bench(int kind, int reps, uint32_t* roots_out)
+{
+  for (int w = 0; w < 20; w++) path_levels(kind);
+  cudaDeviceSynchronize();
+  cudaEvent_t t0, t1; cudaEventCreate(&t0); cudaEventCreate(&t1);
+  cudaEventRecord(t0);
+  for (int rep = 0; rep < reps; rep++) path_levels(kind);
+  cudaEventRecord(t1); cudaEventSynchronize(t1);
+  float ms = 0; cudaEventElapsedTime(&ms, t0, t1);
+  cudaError_t e = cudaGetLastError();
+  if (roots_out) cudaMemcpy(roots_out, p_a, p_n[p_L] * 32, cudaMemcpyDeviceToHost);
+  return e == cudaSuccess ? ms * 1e6 / reps : -2.0;
+}
 API double open_bench(size_t n, const uint64_t* off_host, int reps, uint32_t* out_host)
 {
   uint64_t* d_off; uint32_t* d_out;

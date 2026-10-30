@@ -431,7 +431,8 @@ if MEMSIM:
     def gneed(nd):                                                                    # GGM: slots an issue adds (two children, minus its seed if it frees now)
         return 2 - (1 if (not nd.nw or nd.wr) and not resident(nd) else 0)
     def mroom(nd, delay=0):                                                           # Merkle: the parent's slot fits after its freeable children (planned
-        fr = sum(1 for k in nd.kids if (not k.nw or k.wr) and not resident(k))        # ahead: only the child whose slot it takes over frees at plan time)
+        fr = sum(1 for k in nd.kids if (not k.nw or k.wr) and not resident(k) and not (k.pw and not k.wr))   # ahead: only the child whose slot it takes over frees at plan time;
+        #                                                                               an input bound for the proof (pw) frees after its write)
         return used + 1 - (min(fr, 1) if delay else fr) <= CAP
     pend_free = {}                                                                    # cycle -> children freed at their parent's issue
     def pop_fit(h):                                                                   # Merkle: the first ready node (key order) whose parent slot fits
@@ -458,6 +459,7 @@ if MEMSIM:
             took = False
             for k in nd.kids:
                 k.cons = True
+                if k.pw and k.kind == "leaf" and not k.nw: k.nw = True; wpend += 1; wq.append(k)   # an opened leaf / stored sibling: written to the proof once consumed
                 if delay and (not k.nw or k.wr) and not resident(k):
                     if took: pend_free.setdefault(t + delay, []).append(k)        # read at the issue cycle: freed then
                     else: took = True; mem_free(k)                               # its slot becomes the parent's result slot
@@ -561,7 +563,6 @@ if MEMSIM:
             if tag >= BGTAG: continue                                                   # another core's
             x = nodes[tag]; x.rinf = False; x.res = True; hbm_rd += 32
             d = t + 1 - rsent.pop(tag); rlat[0] += 1; rlat[1] += d; rlat[2] = max(rlat[2], d)
-            if x.pw: x.nw = True; wpend += 1; wq.append(x)                            # an opened leaf / sibling: into the proof
             if REQ == "merkle":
                 if all(k.res for k in x.mparent.kids): rpush(x.mparent)
             else: rpush(x)

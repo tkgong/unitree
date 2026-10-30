@@ -336,8 +336,9 @@ static void mono_parents_simd(const uint32_t* src, uint32_t* dst, size_t i0, siz
 }
 
 // ---------------- trees ----------------
-static void merkle_level(int kind, int impl, const uint32_t* src, uint32_t* dst, size_t m) {
-  bool root = (m == 1);
+static void merkle_level_f(int kind, int impl, const uint32_t* src, uint32_t* dst, size_t m, bool root);
+static void merkle_level(int kind, int impl, const uint32_t* src, uint32_t* dst, size_t m) { merkle_level_f(kind, impl, src, dst, m, m == 1); }
+static void merkle_level_f(int kind, int impl, const uint32_t* src, uint32_t* dst, size_t m, bool root) {
   POOL.par(m, [&](size_t a, size_t b) {
     if (kind == 1) b3_parents_official(src, dst, a, b, (uint8_t)(F_PARENT | (root ? F_ROOT : 0)));
     else if (impl == 1) mono_parents_simd(src, dst, a, b);
@@ -419,6 +420,38 @@ API double cpu_open(int reps, size_t n, const uint32_t* lvl, const uint64_t* idx
     auto t1 = std::chrono::steady_clock::now();
     ns += std::chrono::duration<double, std::nano>(t1 - t0).count();
   }
+  return ns / reps;
+}
+// cpu_open_paths: the authentication paths of q opened leaves hashed up to the root, level by level over the distinct path
+// nodes (paths that merge share the node), the other child of every node from the stored tree: log2 compressions per
+// opened leaf, all threads of the pool; out gets the root. reps timed -> ns per call.
+API double cpu_open_paths(int kind, int impl, int log2, int q, const uint64_t* leaves, uint32_t* root, int reps) {
+  std::vector<uint64_t> base(leaves, leaves + q); std::sort(base.begin(), base.end()); base.erase(std::unique(base.begin(), base.end()), base.end());
+  std::vector<uint64_t> idx, up; std::vector<uint32_t> vals, pairs, nxt; double ns = 0;
+  for (int rep = 0; rep < reps; rep++) {
+    auto t0 = std::chrono::steady_clock::now();
+    idx = base; vals.resize(idx.size() * 8);
+    for (size_t k = 0; k < idx.size(); k++) memcpy(vals.data() + 8 * k, STORE_.data() + OFF_[0] + idx[k] * 8, 32);
+    for (int l = 1; l <= log2; l++) {
+      up.clear(); for (uint64_t j : idx) if (up.empty() || up.back() != (j >> 1)) up.push_back(j >> 1);
+      pairs.resize(up.size() * 16); nxt.resize(up.size() * 8);
+      POOL.par(up.size(), [&](size_t a, size_t b) {
+        size_t p = std::lower_bound(idx.begin(), idx.end(), up[a] << 1) - idx.begin();
+        for (size_t k = a; k < b; k++)
+          for (int c = 0; c < 2; c++) {
+            uint64_t child = 2 * up[k] + c; const uint32_t* s;
+            if (p < idx.size() && idx[p] == child) { s = vals.data() + 8 * p; p++; }      // a computed path node
+            else s = STORE_.data() + OFF_[l - 1] + child * 8;                            // its sibling, stored
+            memcpy(pairs.data() + 16 * k + 8 * c, s, 32);
+          }
+      });
+      merkle_level_f(kind, impl, pairs.data(), nxt.data(), up.size(), l == log2);
+      idx.swap(up); vals.swap(nxt);
+    }
+    auto t1 = std::chrono::steady_clock::now();
+    ns += std::chrono::duration<double, std::nano>(t1 - t0).count();
+  }
+  memcpy(root, vals.data(), 32);
   return ns / reps;
 }
 API void cpu_mono_perm(const uint32_t* in, uint32_t* out) { uint32_t x[16]; memcpy(x, in, 64); mono_perm1(x); memcpy(out, x, 64); }
