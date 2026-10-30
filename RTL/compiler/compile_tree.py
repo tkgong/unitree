@@ -794,7 +794,8 @@ def open_phase(qs):
 OPEN = [int(x) for x in next((a[5:] for a in sys.argv[5:] if a.startswith("open=")), "").split(",") if x]
 def print_open():
     print(f"  open ({'authentication paths' if REQ == 'merkle' else 'GGM punctures, co-path seeds'}, tree 2^{SZ}; top {RTOP} levels resident on chip; 1 KB rows; HBM {BW:g} B/cycle)")
-    THR = {1: 2.71, 2: 2.71, 4: 0.286, 5: 0.222}[prim]                              # nodes per cycle (measured at 2^22, README); recompute cycles = hashes / THR is an estimate
+    THR = {1: NB / 14, 2: NB / 14, 4: len(BASES) / 7, 5: 0.222}[prim]               # nodes per cycle of this unit (blocks / traversals; datapaths / traversals): the recompute's
+                                                                                      # cycles = hashes / THR is an estimate; q independent 2^4 trees run as a program reach 0.98 of it (policy18.md)
     print(f"    {'q':>5} {'nodes read':>10} {'per leaf':>8} {'HBM KB':>8} {'HBM cyc':>8} {'recomp':>7} {'est.cyc':>7} | row activations " + " ".join(f"{L:>7}" for L in LAYOUTS) + " | per opened leaf " + " ".join(f"{L:>6}" for L in LAYOUTS))
     orng = random.Random(7)
     for q in OPEN:
