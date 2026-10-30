@@ -153,6 +153,7 @@ def build_open(log2n, prim, q, K, nodes, proof_base):
     made, parents, seq = {}, [], [0]
     def get(l, j, compute):                                                           # the node (l, j): computed (path / recomputed sibling) or an input
         if (l, j) in made: return made[(l, j)]
+        if l == 0: compute = False                                                    # leaves (opened or of a recomputed subtree) are always read
         if not compute:
             nd = Node(len(nodes), "leaf", prim, l, j); nd.done = True; nd.result = val[l][j]; nodes.append(nd)
         else:
