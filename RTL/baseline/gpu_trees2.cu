@@ -284,10 +284,10 @@ API double tree2_bench(int kind, int opt, int fuse, int L, int T, int reps, doub
 // leaves; GGM: lam, 0 = leaves) at word offset g_off[l], the T trees' 2^(L-l) nodes each concatenated (tree-major). Not timed.
 // open_bench: gather n nodes given as word offsets / 8 (the caller computes them: memsim/open18.py), one thread per 16 B,
 // the output in list order; kernel time over reps -> ns per call; out_host gets the last gather.
-static uint32_t* g_store = nullptr; static std::vector<size_t> g_off;
+static uint32_t* g_store = nullptr; static size_t g_off[64];
 API int open_build(int kind, int L, int T, const uint32_t* in)
 {
-  size_t n = (size_t)1 << L; g_off.assign(L + 1, 0); size_t tot = 0;
+  size_t n = (size_t)1 << L; size_t tot = 0;
   for (int l = 0; l <= L; l++) { g_off[l] = tot; tot += (size_t)T * (n >> l) * 8; }
   if (g_store) cudaFree(g_store);
   if (cudaMalloc(&g_store, tot * 4) != cudaSuccess) return -1;
