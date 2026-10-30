@@ -75,9 +75,13 @@ def unit_open(req, prim, K, qs, tag):
         stored |= {(K + 1, j) for (m, j) in exp if m == K + 1}                       # the stored level-(K + 1) path nodes are read
     rd = sorted(stored, key=lambda x: addr(*x)); wr = sorted(need)
     addrs, flags = [], []
-    for k in range(max(len(rd), len(wr))):                                            # the stream: a read, then a proof write, ...
-        if k < len(rd): addrs.append(addr(*rd[k])); flags.append(False)
-        if k < len(wr): addrs.append(PROOF + k * 32); flags.append(True)
+    G = 512; wf = 0                                                                   # the proof is staged in the SRAM (16 KB) and written in bursts of G nodes:
+    for k in range(len(rd)):                                                          # fewer read / write turnarounds than one write per read (q = 4096 Monolith:
+        addrs.append(addr(*rd[k])); flags.append(False)                               # 77,105 -> 58,083 cycles; reads alone 36,491)
+        if (k + 1) % G == 0:
+            for w in range(wf, min(wf + G, len(wr))): addrs.append(PROOF + w * 32); flags.append(True)
+            wf = min(wf + G, len(wr))
+    for w in range(wf, len(wr)): addrs.append(PROOF + w * 32); flags.append(True)
     cyc_a, st, lat = hbm.batch(addrs, channels=CH, mapper="RoBaRaCoCh", write=flags, port=CH, nbl=2, kind="gddr")
     r = {"opened": len(need), "read": len(rd), "written": len(wr), "recomputed": len(low), "cyc_stream": cyc_a,
          "act": st["ACT"], "row_hit": st["row_hit"], "lat_avg": (sum(lat) / len(lat)) if lat else 0, "cyc_prog": 0, "prog_nodes": 0, "prog_overhead": 0.0, "prog": ""}
