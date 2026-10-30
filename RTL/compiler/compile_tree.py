@@ -444,7 +444,7 @@ if MEMSIM:
         for e in side: heapq.heappush(h, e)
         return nd
     def mem_take(nd, delay=0):                                                        # a node leaves the ready heap: inputs consumed, outputs reserved
-        global used, cur_tile, fly
+        global used, cur_tile, fly, wpend
         fly += 1 if nd.kind == "m" else 2
         if REQ == "ggm" and nd.level == SZ - TK: tstart.setdefault(tile_of(nd), t)
         if AUDIT:
