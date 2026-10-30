@@ -254,7 +254,7 @@ if MEMSIM:
     RTOP = int(next((a[3:] for a in sys.argv[5:] if a.startswith("top") and a[3:].isdigit()), "0"))   # levels kept resident (never freed) for the open
     def resident(x): return RTOP > 0 and lam(x) > SZ - RTOP
     if REQ == "merkle":                                                               # Merkle: tile = 2^TK leaves, two leaf tiles (double buffer) in half the SRAM
-        TK = max(1, min(SZ, (CAP // 4).bit_length() - 1)); WT = 2
+        TK = max(1, min(SZ, int(next((a[5:] for a in sys.argv[5:] if a.startswith("tile=")), str((CAP // 4).bit_length() - 1))))); WT = 2
     GSCHED = next((a[7:] for a in sys.argv[5:] if a.startswith("gsched=")), "dfs")
     WFLY = (2 * MSLOTS) if prim in (4, 5) else sum(len(GBLK[spans[0]]) * sum(GD[g] + 1 for g in spans) for spans in CH)   # nodes the pipeline holds (ring slots)
     AHEAD = int(next((a[6:] for a in sys.argv[5:] if a.startswith("ahead=")), "0"))
