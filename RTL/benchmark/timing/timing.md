@@ -14,6 +14,12 @@ Flow: `WORK=work_t10 MODES=flat KEEPALU=1 KS45=1 NET=1 ABC_SPEED=1 ADDER=kogge-s
 | t9 | + structural Nangate45 Kogge-Stone adders (alu_add_ks45) | -0.08 | 0.00 | 0.00 | 0.00 |
 | **t10** | + a BUF_X1 per control copy (the copies survive) | **0.00** | **0.00** | **0.00** | **0.00** |
 
+Sign-off check of the t10 netlists (`sta.sh`, `NL=rep`, 2026-10-29): every input driven by a DFF_X1 Q pin (the controller's
+registers) instead of an ideal source; `blake` (ChaCha20 / BLAKE3 select, changed only between programs with the unit idle)
+with a 2-cycle path, every other input 1 cycle. WNS / TNS 0.00 on all four; worst-path slack shared 0.007, mono 0.101, chacha
+0.117, blake3 0.117 ns. (With an ideal driver and `blake` single-cycle the shared unit showed -0.154 ns on the `blake` fanout.)
+`test/regress.sh` reruns the whole flow from the checkout: the four `_rep.v` come out byte-identical to `work_t10`.
+
 Worst paths of t10 (arrival ns; the clock is 1.000, setup absorbs the rest):
 
 - shared 0.952: `r8_q` copy -> INV, NOR2 (ff decode) -> 2 BUF_X1 -> ops mux -> lend mux -> structural adder (XOR2, 5 x
@@ -36,7 +42,7 @@ What moved the numbers (all measured):
   1,179 r8_q flops in chacha).
 - ABC on the flat design degrades the ALU mapping; KEEPALU keeps only the alu_* modules hierarchical through ABC.
 
-Area of the timing-closed netlists (t10, flat, Nangate45 um^2; the sharing in `report.md` is from the area-mapped flow):
+Area of the timing-closed netlists (t10, flat, Nangate45 um^2; the sharing in `area/area.md` is from the area-mapped flow):
 
 | unit | total | flip-flops (count) | cells |
 |---|---:|---:|---:|
@@ -51,6 +57,6 @@ Area of the timing-closed netlists (t10, flat, Nangate45 um^2; the sharing in `r
 | registers | 1,477,039 | 929,823 | 37.0% |
 | total | 2,896,960 | 1,898,076 | 34.5% |
 
-The logic sharing is higher than in the area-mapped flow (8.5%) because the timing-closed ARX adders are the structural
+The logic sharing is higher than in the area-mapped flow (8.9%) because the timing-closed ARX adders are the structural
 Kogge-Stone (about twice the cells of an area-mapped adder) and the shared unit has 432 of them where the separate units
 have 864 (the natural ChaCha20 and BLAKE3 units each carry their own).

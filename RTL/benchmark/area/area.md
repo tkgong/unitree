@@ -1,19 +1,22 @@
-Area-mapped sharing of the current RTL (dana336, 2026-10-28, `syn.sh` default flow: flat + hier, Yosys + ABC area
-mapping, Nangate45; `report.py`). The timing-closed netlists and their sharing are in `timing.md`.
+Area-mapped sharing of the current RTL (dana336, 2026-10-29, `test/regress.sh` step 5: `syn.sh` default flow, flat + hier,
+Yosys + ABC area mapping, Nangate45, behavioural adders; `report.py`). The replicated control registers of the timing flow
+(one copy per fanout group, kept distinct there by a BUF_X1 per copy under KS45) are merged by Yosys opt_merge in this flow:
+this is the area of the logic itself. (The 2026-10-28 run, before the BUF_X1 change, kept about 600 more flip-flops per ARX
+top: shared 193,050, total 30.1% saved.) The timing-closed netlists and their sharing are in `timing.md`.
 
 | unit | cells | total um^2 | flip-flops um^2 (count) | logic um^2 | ALU instances um^2 |
 |---|---:|---:|---:|---:|---:|
-| unit18_shared | 673,359 | 1,447,576 | 872,972 (193,050) | 574,604 | 546,216 |
-| unit18_mono | 362,398 | 597,244 | 248,773 (55,014) | 348,471 | 455,566 |
-| unit18_chacha | 217,162 | 653,847 | 524,231 (115,929) | 129,616 | 118,589 |
-| unit18_blake3 | 258,627 | 820,079 | 670,459 (148,266) | 149,620 | 118,589 |
+| unit18_shared | 674,460 | 1,438,757 | 866,786 (191,682) | 571,971 | 546,216 |
+| unit18_mono | 362,406 | 597,227 | 248,773 (55,014) | 348,453 | 455,566 |
+| unit18_chacha | 216,745 | 651,399 | 521,626 (115,353) | 129,772 | 118,589 |
+| unit18_blake3 | 257,980 | 817,336 | 667,610 (147,636) | 149,726 | 118,589 |
 
 | sharing: unit18_shared vs unit18_mono + unit18_chacha + unit18_blake3 | separate um^2 | shared um^2 | saved |
 |---|---:|---:|---:|
-| logic only (all non-flip-flop cells) | 627,707 | 574,604 | +8.5% |
+| logic only (all non-flip-flop cells) | 627,952 | 571,971 | +8.9% |
 | ALU instances only | 692,744 | 546,216 | +21.2% |
-| registers | 1,443,463 | 872,972 | +39.5% |
-| total | 2,071,170 | 1,447,576 | +30.1% |
+| registers | 1,438,010 | 866,786 | +39.7% |
+| total | 2,065,961 | 1,438,757 | +30.4% |
 
 | ALU (instances x um^2 each) | unit18_shared | unit18_mono | unit18_chacha | unit18_blake3 | separate sum | shared |
 |---|---:|---:|---:|---:|---:|---:|
