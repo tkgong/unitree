@@ -1,0 +1,20 @@
+request: 1 x BLAKE3 GGM depth 18 (deep)   unit: 2 Monolith ring(s) of 19 slots x 7 traversals; ARX rings [(5, 7), (4, 7), (5, 7), (4, 7)] (blocks, period = sum over spans of latency + 1)
+  nodes computed      262,143
+  cycles              450,591   (Monolith issues 0; ARX ring traversals [397012, 383292, 370160, 355446])
+  throughput          0.582 nodes/cycle
+  memory traffic      262,143 reads, 262,143 writes of 32 B (37.2 B/cycle); live buffer high-water 262,144 x 32 B
+  pending queue       high-water 543 ready nodes waiting for a slot (seeds / parents not yet issued)
+  audit (liveness)    OK: max slots held by one subtree 127 <= bound 2^(TK+1) - 1 = 127 < reserve 212; stack held at most 53
+  audit               OK: SRAM <= capacity after every change, recount from node states every 997 cycles, 524,286 values written once each (16.78 MB), 1 reads, every issue had its inputs on chip and its outputs reserved, end: 0 resident slots
+    write stream rows (32 open rows; block rows staged in SRAM, written whole): level 17,636 activations (951 B each), tile 21,191 activations (791 B each), block 17,124 activations (979 B each); leaf / seed reads 1
+  memory model        SRAM 32 KB = 1,024 x 32 B, tiles of 2^6 leaves, DFS order, a tile opens while the SRAM keeps the oldest tile its reserve, nodes above the tiles 0 tiles ahead, HBM 56 B/cycle, store=all
+    row staging       budget 8.0 KB; 721 rows written partial (over budget)
+    pipeline holds    W = 126 nodes (ring slots of the primitive); GGM lookahead theta (age + h L_max) / (2^TK - 1) from the simulated state, theta 1.286, L_max 98, window 12..37 subtrees
+    SRAM high-water   967 x 32 B = 30.2 KB (capacity 32 KB)
+    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 2.0 / 3.6, waiting for the HBM write 28.1 / 21.4, inputs waiting for their consumer 0.1 / 0.1
+    HBM               read 0.00 MB, write 16.78 MB = 37.2 B/cycle average; transferring in 266,310 of 450,591 cycles (59%)
+    DRAM model        Ramulator2 GDDR6 (the RTX 3070's memory: 16 channels x 16 bit at 14 Gb/s = 448 GB/s): 2 channel(s) = 56 GB/s, CK 1.75 GHz (tCK 0.571 ns, 7 memory clocks per 4 unit cycles), 32 B per access (BL16, nBL 2), 2 KB rows, FR-FCFS, all-bank refresh, RoBaRaCoCh; peak 56 B/cycle; SRAM side sends <= 2 accesses/cycle; stored nodes in the block layout
+    GDDR6 commands    ACT 12,631  PRE 7,879  RD 1  WR 524,286  REFab 472; row hit 97.6%, 1,328 B per activation; write buffers drained 55 cycles after the last cycle
+    GDDR6 read latency 31.0 cycles average, 31 max (send to data on chip, 1 reads)
+  instruction stream  450,591 words; per cycle: mono + blake bit + round indices + block/state addresses
+  check: all GGM leaves / Merkle roots and parents vs Python reference: OK

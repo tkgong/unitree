@@ -1,0 +1,19 @@
+request: 1 x BLAKE3 Merkle 2^18 leaves (deep)   unit: 2 Monolith ring(s) of 19 slots x 7 traversals; ARX rings [(5, 7), (4, 7), (5, 7), (4, 7)] (blocks, period = sum over spans of latency + 1)
+  nodes computed      262,143
+  cycles              205,692   (Monolith issues 0; ARX ring traversals [204428, 204148, 204092, 204050])
+  throughput          1.274 nodes/cycle
+  memory traffic      524,286 reads, 262,143 writes of 32 B (122.3 B/cycle); live buffer high-water 25 x 32 B
+  pending queue       high-water 296 ready nodes waiting for a slot (seeds / parents not yet issued)
+  audit               OK: SRAM <= capacity after every change, recount from node states every 997 cycles, 1 values written once each (0.00 MB), 262,144 reads, every issue had its inputs on chip and its outputs reserved, end: 0 resident slots
+    write stream rows (32 open rows; block rows staged in SRAM, written whole): level 1 activations (32 B each), tile 1 activations (32 B each), block 1 activations (32 B each); leaf / seed reads 8,192
+  memory model        SRAM 32 KB = 1,024 x 32 B, tiles of 2^9 leaves, 2 open (double buffer), HBM 56 B/cycle, store=out
+    row staging       budget 8.0 KB; 0 rows written partial (over budget)
+    pipeline holds    W = 126 nodes (ring slots of the primitive); GGM lookahead -
+    SRAM high-water   797 x 32 B = 24.9 KB (capacity 32 KB)
+    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 4.1 / 4.0, waiting for the HBM write 0.0 / 0.0, inputs waiting for their consumer 20.8 / 16.0
+    HBM               read 8.39 MB, write 0.00 MB = 40.8 B/cycle average; transferring in 202,160 of 205,692 cycles (98%)
+    DRAM model        Ramulator2 GDDR6 (the RTX 3070's memory: 16 channels x 16 bit at 14 Gb/s = 448 GB/s): 2 channel(s) = 56 GB/s, CK 1.75 GHz (tCK 0.571 ns, 7 memory clocks per 4 unit cycles), 32 B per access (BL16, nBL 2), 2 KB rows, FR-FCFS, all-bank refresh, RoBaRaCoCh; peak 56 B/cycle; SRAM side sends <= 2 accesses/cycle; stored nodes in the block layout
+    GDDR6 commands    ACT 4,382  PRE 1,205  RD 262,144  WR 1  REFab 216; row hit 98.3%, 1,914 B per activation; write buffers drained 174 cycles after the last cycle
+    GDDR6 read latency 62.6 cycles average, 267 max (send to data on chip, 262,144 reads)
+  instruction stream  205,692 words; per cycle: mono + blake bit + round indices + block/state addresses
+  check: all GGM leaves / Merkle roots and parents vs Python reference: OK
