@@ -170,6 +170,7 @@ for (req, prim, kind, impl, K, PW) in PROGS:
     ins = [array("I", (rng.getrandbits(31) for _ in range(n * 8 if merkle else 8))) for t in range(T)]   # the trees' inputs
     allin = array("I"); [allin.extend(x) for x in ins]
     assert gpu.open_build(kind, SZ, T, u32(allin)) == 0, "GPU build"
+    time.sleep(2.0); ti0 = time.time(); time.sleep(3.0); GPU_IDLE, _ = pw.mean(ti0, time.time())   # the idle power right before this program's measurements (the GPU's idle state drifts)
     for q in QS:
         qsets = [sorted(random.Random(7 + 1000 * t + q).sample(range(n), q)) for t in range(T)]
         sets = [sorted(opened(req, qs, K)[0]) for qs in qsets]
