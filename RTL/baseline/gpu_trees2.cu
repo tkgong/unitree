@@ -278,3 +278,56 @@ API double tree2_bench(int kind, int opt, int fuse, int L, int T, int reps, doub
   if (e != cudaSuccess) return -2.0;
   return ms * 1e6 / ((double)(n - 1) * T * reps);
 }
+
+// ---------------- opening: T trees stored with every level (device resident), gather of the opened nodes ----------------
+// open_build: T trees from in (Merkle: T * 2^L leaves; GGM: T root seeds), every level kept: level l (Merkle: above the
+// leaves; GGM: lam, 0 = leaves) at word offset g_off[l], the T trees' 2^(L-l) nodes each concatenated (tree-major). Not timed.
+// open_bench: gather n nodes given as word offsets / 8 (the caller computes them: memsim/open18.py), one thread per 16 B,
+// the output in list order; kernel time over reps -> ns per call; out_host gets the last gather.
+static uint32_t* g_store = nullptr; static std::vector<size_t> g_off;
+API int open_build(int kind, int L, int T, const uint32_t* in)
+{
+  size_t n = (size_t)1 << L; g_off.assign(L + 1, 0); size_t tot = 0;
+  for (int l = 0; l <= L; l++) { g_off[l] = tot; tot += (size_t)T * (n >> l) * 8; }
+  if (g_store) cudaFree(g_store);
+  if (cudaMalloc(&g_store, tot * 4) != cudaSuccess) return -1;
+  if (is_merkle(kind))
+  {
+    cudaMemcpy(g_store + g_off[0], in, (size_t)T * n * 32, cudaMemcpyHostToDevice);
+    for (int l = 1; l <= L; l++) merkle_launch(kind, true, g_store + g_off[l - 1], g_store + g_off[l], (size_t)T * (n >> l), l == L ? (4 | 8) : 4);
+  }
+  else
+  {
+    cudaMemcpy(g_store + g_off[L], in, (size_t)T * 32, cudaMemcpyHostToDevice);
+    for (int lv = 0; lv < L; lv++)
+    {
+      size_t nn = ((size_t)T) << lv; uint64_t mask = (1ull << lv) - 1;
+      if (kind == 2) ggm_level_k<2><<<nblk(nn), 256>>>(g_store + g_off[L - lv], g_store + g_off[L - lv - 1], nn, (uint32_t)lv, mask);
+      else ggm_level_k<3><<<nblk(nn), 256>>>(g_store + g_off[L - lv], g_store + g_off[L - lv - 1], nn, (uint32_t)lv, mask);
+    }
+  }
+  return cudaDeviceSynchronize() == cudaSuccess ? 0 : -2;
+}
+API uint64_t open_off(int lvl) { return g_off[lvl] / 8; }                            // node offset (32 B units) of level lvl, tree 0, index 0
+__global__ void gather_k(const uint32_t* __restrict__ store, const uint64_t* __restrict__ off, uint32_t* __restrict__ out, size_t n2)
+{
+  size_t k = blockIdx.x * (size_t)blockDim.x + threadIdx.x;                          // one thread per 16 B half of a node
+  if (k >= n2) return;
+  ((uint4*)(out + (k >> 1) * 8))[k & 1] = ((const uint4*)(store + off[k >> 1] * 8))[k & 1];
+}
+API double open_bench(size_t n, const uint64_t* off_host, int reps, uint32_t* out_host)
+{
+  uint64_t* d_off; uint32_t* d_out;
+  if (cudaMalloc(&d_off, n * 8) != cudaSuccess || cudaMalloc(&d_out, n * 32) != cudaSuccess) return -1.0;
+  cudaMemcpy(d_off, off_host, n * 8, cudaMemcpyHostToDevice);
+  gather_k<<<nblk(2 * n), 256>>>(g_store, d_off, d_out, 2 * n); cudaDeviceSynchronize();   // warm-up
+  cudaEvent_t t0, t1; cudaEventCreate(&t0); cudaEventCreate(&t1);
+  cudaEventRecord(t0);
+  for (int rep = 0; rep < reps; rep++) gather_k<<<nblk(2 * n), 256>>>(g_store, d_off, d_out, 2 * n);
+  cudaEventRecord(t1); cudaEventSynchronize(t1);
+  float ms = 0; cudaEventElapsedTime(&ms, t0, t1);
+  cudaError_t e = cudaGetLastError();
+  if (out_host) cudaMemcpy(out_host, d_out, n * 32, cudaMemcpyDeviceToHost);
+  cudaFree(d_off); cudaFree(d_out);
+  return e == cudaSuccess ? ms * 1e6 / reps : -2.0;
+}

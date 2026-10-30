@@ -103,13 +103,15 @@ def batch(addrs, channels=8, mapper="RoBaRaCoCh", write=False, port=None, max_cy
     """Issue the 32 B accesses in order (as many per cycle as the controllers take, at most `port`), until all reads have
     returned -> (cycles, stats, latencies of the reads). The open phase and the microbenchmarks use it. kind: hbm | gddr."""
     m = GDDR6(channels, mapper, nbl) if kind == "gddr" else HBM(channels, mapper, nbl); port = port or channels
+    wr = write if isinstance(write, (list, tuple)) else [write] * len(addrs)       # per access (a mixed read / write stream) or one flag
     i, t, out, sent = 0, 0, 0, {}
     lat = []
     while (i < len(addrs) or sent) and t < max_cycles:
         n = 0
-        while i < len(addrs) and n < port and m.send(addrs[i], write, i):
-            if not write: sent[i] = t
+        while i < len(addrs) and n < port and m.send(addrs[i], wr[i], i):
+            if not wr[i]: sent[i] = t
             i += 1; n += 1
-        for tag in m.tick(): lat.append(t + 1 - sent.pop(tag))
+        for tag in m.tick():
+            if tag in sent: lat.append(t + 1 - sent.pop(tag))
         t += 1
     return t, m.stats(), lat

@@ -295,8 +295,11 @@ if MEMSIM:
         return (1 << (SZ - top)) if top <= SZ else 1
     BANDB = [0]
     for b in range((SZ - 1) // HBLK + 1): BANDB.append(BANDB[-1] + blocks_in_band(b) * ROWB)
+    LMF = next((a[8:] for a in sys.argv[5:] if a.startswith("leafmap=")), "")        # leafmap=<file>: the leaf array is not contiguous: line c = byte address of
+    LEAFMAP = [int(x) for x in open(LMF).read().split()] if LMF else None             # the chunk of 2^SZ / lines leaves (the open's recompute of scattered subtrees)
+    LMK = (SZ - (len(LEAFMAP).bit_length() - 1)) if LEAFMAP else 0
     def addr(layout, l, j):                                                           # byte address of node (level l, index j)
-        if l == 0: return j * 32                                                      # leaves: their own array
+        if l == 0: return (LEAFMAP[j >> LMK] + (j & ((1 << LMK) - 1)) * 32) if LEAFMAP else j * 32   # leaves: their own array
         base = -(-(1 << SZ) * 32 // ROWB) * ROWB                                      # internal nodes after the leaves, from a 1 KB boundary
         if layout == "level": return base + ((1 << SZ) - (1 << (SZ - l + 1)) + j) * 32
         if layout == "tile":

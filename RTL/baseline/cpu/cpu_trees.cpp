@@ -384,4 +384,41 @@ API double cpu_tree(int kind, int impl, int log2, int reps, const uint32_t* in, 
   }
   return ns / ((double)(n - 1) * reps);
 }
+// ---------------- opening: the tree stored with every level, and the gather of the opened nodes ----------------
+// cpu_store_build: build one tree (Merkle: in = 2^log2 leaves; GGM: in = the root seed) keeping every level: level l
+// (Merkle: above the leaves; GGM: lam, 0 = leaves) at OFF_[l], 2^(log2-l) nodes of 8 words. Not timed.
+// cpu_open: gather n nodes (level lvl[k], index idx[k]) into out (8 words each), all threads of the pool, reps times:
+// ns per call. The opened set (merged authentication paths / co-path seeds) is computed by the caller, the same list
+// the GPU and the unit's memory model open (memsim/open18.py).
+static std::vector<uint32_t> STORE_; static std::vector<size_t> OFF_;
+API int cpu_store_build(int kind, int impl, int log2, const uint32_t* in) {
+  size_t n = (size_t)1 << log2; bool merkle = (kind == 1 || kind == 4);
+  OFF_.assign(log2 + 1, 0); size_t tot = 0;
+  for (int l = 0; l <= log2; l++) { OFF_[l] = tot; tot += (n >> l) * 8; }
+  STORE_.assign(tot, 0);
+  if (merkle) {
+    memcpy(STORE_.data() + OFF_[0], in, n * 32);
+    for (int l = 1; l <= log2; l++) merkle_level(kind, impl, STORE_.data() + OFF_[l - 1], STORE_.data() + OFF_[l], n >> l);
+  } else {
+    memcpy(STORE_.data() + OFF_[log2], in, 32);
+    for (int lv = 0; lv < log2; lv++) ggm_level(kind, impl, STORE_.data() + OFF_[log2 - lv], STORE_.data() + OFF_[log2 - lv - 1], (size_t)1 << lv, (uint32_t)lv);
+  }
+  return 0;
+}
+API const uint32_t* cpu_store_node(int lvl, uint64_t idx) { return STORE_.data() + OFF_[lvl] + idx * 8; }
+API double cpu_open(int reps, size_t n, const uint32_t* lvl, const uint64_t* idx, uint32_t* out) {
+  double ns = 0;
+  for (int rep = 0; rep < reps; rep++) {
+    auto t0 = std::chrono::steady_clock::now();
+    POOL.par(n, [&](size_t a, size_t b) {
+      for (size_t k = a; k < b; k++) {
+        const uint32_t* s = STORE_.data() + OFF_[lvl[k]] + idx[k] * 8;
+        _mm256_storeu_si256((__m256i*)(out + k * 8), _mm256_loadu_si256((const __m256i*)s));
+      }
+    });
+    auto t1 = std::chrono::steady_clock::now();
+    ns += std::chrono::duration<double, std::nano>(t1 - t0).count();
+  }
+  return ns / reps;
+}
 API void cpu_mono_perm(const uint32_t* in, uint32_t* out) { uint32_t x[16]; memcpy(x, in, 64); mono_perm1(x); memcpy(out, x, 64); }
