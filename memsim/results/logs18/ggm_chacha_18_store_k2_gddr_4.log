@@ -10,11 +10,11 @@ request: 1 x ChaCha20 GGM depth 18 (deep)   unit: 2 Monolith ring(s) of 19 slots
   memory model        SRAM 32 KB = 1,024 x 32 B, tiles of 2^4 leaves, DFS order, a tile opens while the SRAM keeps the oldest tile its reserve, nodes above the tiles 0 tiles ahead, HBM 112 B/cycle, store=k2
     row staging       budget 8.0 KB; 0 rows written partial (over budget)
     pipeline holds    W = 126 nodes (ring slots of the primitive); GGM lookahead theta (age + h L_max) / (2^TK - 1) from the simulated state, theta 1.286, L_max 98, window 124..152 subtrees
-    SRAM high-water   821 x 32 B = 25.7 KB (capacity 32 KB)
-    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 9.0 / 8.0, waiting for the HBM write 4.8 / 3.9, inputs waiting for their consumer 11.9 / 3.1
-    HBM               read 0.00 MB, write 10.49 MB = 51.0 B/cycle average; transferring in 83,556 of 205,652 cycles (41%)
+    SRAM high-water   850 x 32 B = 26.6 KB (capacity 32 KB)
+    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 9.0 / 8.0, waiting for the HBM write 12.4 / 4.1, inputs waiting for their consumer 5.1 / 3.1
+    HBM               read 0.00 MB, write 10.49 MB = 51.0 B/cycle average; transferring in 83,033 of 205,652 cycles (40%)
     DRAM model        Ramulator2 GDDR6 (the RTX 3070's memory: 16 channels x 16 bit at 14 Gb/s = 448 GB/s): 4 channel(s) = 112 GB/s, CK 1.75 GHz (tCK 0.571 ns, 7 memory clocks per 4 unit cycles), 32 B per access (BL16, nBL 2), 2 KB rows, FR-FCFS, all-bank refresh, RoBaRaCoCh; peak 112 B/cycle; SRAM side sends <= 4 accesses/cycle; stored nodes in the block layout
-    HBM2 commands     ACT 9,307  PRE 9,243  RD 1  WR 327,678  REFab 0; row hit 97.2%, 1,127 B per activation; write buffers drained 16 cycles after the last cycle
-    HBM2 read latency 31.0 cycles average, 31 max (send to data on chip, 1 reads)
+    GDDR6 commands    ACT 10,239  PRE 4,602  RD 1  WR 327,678  REFab 428; row hit 96.9%, 1,024 B per activation; write buffers drained 16 cycles after the last cycle
+    GDDR6 read latency 31.0 cycles average, 31 max (send to data on chip, 1 reads)
   instruction stream  205,652 words; per cycle: mono + blake bit + round indices + block/state addresses
   check: all GGM leaves / Merkle roots and parents vs Python reference: OK

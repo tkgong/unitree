@@ -11,9 +11,9 @@ request: 1 x BLAKE3 Merkle 2^18 leaves (deep)   unit: 2 Monolith ring(s) of 19 s
     pipeline holds    W = 126 nodes (ring slots of the primitive); GGM lookahead -
     SRAM high-water   659 x 32 B = 20.6 KB (capacity 32 KB)
     SRAM breakdown KB at the high-water / time average: results in flight (reserved) 3.9 / 4.0, waiting for the HBM write 0.0 / 0.0, inputs waiting for their consumer 16.7 / 12.1
-    HBM               read 8.39 MB, write 0.00 MB = 40.8 B/cycle average; transferring in 48,612 of 205,582 cycles (24%)
+    HBM               read 8.39 MB, write 0.00 MB = 40.8 B/cycle average; transferring in 52,671 of 205,582 cycles (26%)
     DRAM model        Ramulator2 GDDR6 (the RTX 3070's memory: 16 channels x 16 bit at 14 Gb/s = 448 GB/s): 16 channel(s) = 448 GB/s, CK 1.75 GHz (tCK 0.571 ns, 7 memory clocks per 4 unit cycles), 32 B per access (BL16, nBL 2), 2 KB rows, FR-FCFS, all-bank refresh, RoBaRaCoCh; peak 448 B/cycle; SRAM side sends <= 16 accesses/cycle; stored nodes in the block layout
-    HBM2 commands     ACT 4,097  PRE 3,841  RD 262,144  WR 1  REFab 0; row hit 98.4%, 2,048 B per activation; write buffers drained 24 cycles after the last cycle
-    HBM2 read latency 28.2 cycles average, 56 max (send to data on chip, 262,144 reads)
+    GDDR6 commands    ACT 5,489  PRE 1,712  RD 262,144  WR 1  REFab 1,712; row hit 97.9%, 1,528 B per activation; write buffers drained 9 cycles after the last cycle
+    GDDR6 read latency 31.4 cycles average, 207 max (send to data on chip, 262,144 reads)
   instruction stream  205,582 words; per cycle: mono + blake bit + round indices + block/state addresses
   check: all GGM leaves / Merkle roots and parents vs Python reference: OK

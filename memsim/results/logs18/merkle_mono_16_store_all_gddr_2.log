@@ -9,11 +9,11 @@ request: 1 x Monolith-31 Merkle 2^16 leaves (deep)   unit: 2 Monolith ring(s) of
   memory model        SRAM 32 KB = 1,024 x 32 B, tiles of 2^8 leaves, 2 open (double buffer), HBM 56 B/cycle, store=all
     row staging       budget 8.0 KB; 0 rows written partial (over budget)
     pipeline holds    W = 38 nodes (ring slots of the primitive); GGM lookahead -
-    SRAM high-water   671 x 32 B = 21.0 KB (capacity 32 KB)
-    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 1.2 / 1.2, waiting for the HBM write 5.2 / 4.2, inputs waiting for their consumer 14.6 / 11.2
-    HBM               read 2.10 MB, write 2.10 MB = 18.1 B/cycle average; transferring in 98,236 of 231,345 cycles (42%)
+    SRAM high-water   687 x 32 B = 21.5 KB (capacity 32 KB)
+    SRAM breakdown KB at the high-water / time average: results in flight (reserved) 1.2 / 1.2, waiting for the HBM write 5.8 / 4.2, inputs waiting for their consumer 14.4 / 11.2
+    HBM               read 2.10 MB, write 2.10 MB = 18.1 B/cycle average; transferring in 98,265 of 231,345 cycles (42%)
     DRAM model        Ramulator2 GDDR6 (the RTX 3070's memory: 16 channels x 16 bit at 14 Gb/s = 448 GB/s): 2 channel(s) = 56 GB/s, CK 1.75 GHz (tCK 0.571 ns, 7 memory clocks per 4 unit cycles), 32 B per access (BL16, nBL 2), 2 KB rows, FR-FCFS, all-bank refresh, RoBaRaCoCh; peak 56 B/cycle; SRAM side sends <= 2 accesses/cycle; stored nodes in the block layout
-    HBM2 commands     ACT 2,274  PRE 2,242  RD 65,536  WR 65,535  REFab 0; row hit 98.3%, 1,844 B per activation; write buffers drained 29 cycles after the last cycle
-    HBM2 read latency 74.6 cycles average, 227 max (send to data on chip, 65,536 reads)
+    GDDR6 commands    ACT 2,676  PRE 628  RD 65,536  WR 65,535  REFab 242; row hit 98.0%, 1,567 B per activation; write buffers drained 14 cycles after the last cycle
+    GDDR6 read latency 71.3 cycles average, 452 max (send to data on chip, 65,536 reads)
   instruction stream  231,345 words; per cycle: mono + blake bit + round indices + block/state addresses
   check: all GGM leaves / Merkle roots and parents vs Python reference: OK
