@@ -102,9 +102,10 @@ LEAD = 2
 
 
 class Node:
-    __slots__ = ("id", "kind", "prim", "level", "idx", "kids", "parent", "mparent", "result", "done", "root", "res", "cons", "wr", "nw", "freed", "tk", "nwr", "rinf")
+    __slots__ = ("id", "kind", "prim", "level", "idx", "kids", "parent", "mparent", "result", "done", "root", "res", "cons", "wr", "nw", "freed", "tk", "nwr", "rinf", "pw", "paddr")
     def __init__(s, id, kind, prim, level, idx):
         s.id, s.kind, s.prim, s.level, s.idx, s.kids, s.parent, s.mparent, s.result, s.done, s.root = id, kind, prim, level, idx, [], None, None, None, False, False
+        s.pw, s.paddr = False, None                              # open request: this value goes into the proof (written at paddr)
         s.res = s.cons = s.wr = s.nw = s.freed = s.tk = False   # memory model: on chip / consumed / written / to be written / slot freed / slot reserved
         s.rinf = False                                           # hbm=: read sent to the HBM, its slot reserved, data not back yet
         s.nwr = 0                                                # HBM writes of this node (audit)
@@ -133,6 +134,40 @@ def build_merkle_over(leaves, prim, nodes):
         level = nxt
     level[0].root = "noroot" not in sys.argv[5:]                 # noroot: a subtree program (its root is an inner node of the tree)
     return parents, level[0]
+
+
+def build_open(log2n, prim, q, K, nodes, proof_base):
+    """The open of q random leaves of a committed 2^log2n Merkle tree, as one program: the opened leaves and the stored
+    siblings (levels > K) are inputs read from the DRAM (block layout), the siblings of the K unstored levels are
+    recomputed from their leaves (their subtrees are part of the DAG), and every path is hashed up to the root (log2n
+    compressions per opened leaf, shared where paths merge): the root is checked against the committed one. Every opened
+    leaf and sibling is written to the proof (paddr). The committed tree's values come from the Python reference."""
+    n = 1 << log2n
+    val = [[([rnd.randrange(P) for _ in range(8)] if prim in (4, 5) else [rnd.getrandbits(32) for _ in range(8)]) for _ in range(n)]]
+    for l in range(1, log2n + 1):
+        val.append([merkle_fn(prim, val[l - 1][2 * j], val[l - 1][2 * j + 1], l == log2n) for j in range(n >> l)])
+    qs = sorted(random.Random(7 + q).sample(range(n), q))                          # the same leaves memsim/open18.py opens on the CPU and the GPU
+    path = {(l, i >> l) for i in qs for l in range(log2n + 1)}
+    need = {(l, (i >> l) ^ 1) for i in qs for l in range(log2n)} - path            # the proof: siblings not on an opened path, and the opened leaves
+    need |= {(0, i) for i in qs}
+    made, parents, seq = {}, [], [0]
+    def get(l, j, compute):                                                           # the node (l, j): computed (path / recomputed sibling) or an input
+        if (l, j) in made: return made[(l, j)]
+        if not compute:
+            nd = Node(len(nodes), "leaf", prim, l, j); nd.done = True; nd.result = val[l][j]; nodes.append(nd)
+        else:
+            nd = Node(len(nodes), "m", prim, l, j); nodes.append(nd)
+            on = (l, j) in path
+            nd.kids = [get(l - 1, 2 * j + c, compute=(l - 1, 2 * j + c) in path or (not on) or (1 <= l - 1 <= K and (l - 1, 2 * j + c) in need)) for c in (0, 1)]
+            for k in nd.kids: k.mparent = nd
+            parents.append(nd)
+        if (l, j) in need: nd.pw = True; nd.paddr = proof_base + 32 * seq[0]; seq[0] += 1
+        made[(l, j)] = nd
+        return nd
+    root = get(log2n, 0, True); root.root = True
+    assert root.result is None and val[log2n][0] is not None
+    inputs = [nd for nd in nodes if nd.kind == "leaf"]
+    return parents, root, val[log2n][0], inputs, len(need)
 
 
 def build_ggm(depth, prim, nodes):
@@ -189,13 +224,25 @@ TOPL = int(next((a[3:] for a in sys.argv[5:] if a.startswith("top")), "8"))     
 ORDER = next((a for a in sys.argv[5:] if a in ("deep", "fifo")), "deep")
 PACK = "nopack" not in sys.argv[5:] and not (P2 and MUL3)                            # Poseidon2: pack the internal S-boxes of up to 16 programs per issue (not with three ranks)
 MEMSIM = any(a.startswith("sram=") for a in sys.argv[5:])                            # on-chip SRAM / HBM model
+OPENREQ = REQ == "open"                                                               # open blake3|mono <log2 leaves> q=<leaves opened> store=k<K>|all: the open as a program
+if OPENREQ:
+    REQ = "merkle"                                                                    # a Merkle DAG: inputs at any level (stored siblings), paths hashed to the root
+    OPENQ = int(next((a[2:] for a in sys.argv[5:] if a.startswith("q=")), "64"))
+    _st = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
+    OPENK = int(_st[1:]) if _st.startswith("k") else 0                                # levels above the leaves the commit did not store (recomputed here)
+    PROOF_BASE = 512 << 20
 if REQ == "merkle":
     prim = {"blake3": 1, "mono": 4, "pos2": 5}[sys.argv[3]]; SZ = int(sys.argv[4])
     assert prim != 5 or P2, "this unit has no Poseidon2 issues"
     for _ in range(NT):
-        parents, root = build_merkle(SZ, prim, nodes); roots.append(root)
-        for p_ in parents:
-            if p_.level == 1 and not MEMSIM: rpush(p_)                          # memory model: when both leaves are on chip
+        if OPENREQ:
+            parents, root, OPEN_ROOT, OPEN_INPUTS, OPEN_PROOF = build_open(SZ, prim, OPENQ, OPENK, nodes, PROOF_BASE); roots.append(root)
+            for p_ in parents:
+                if all(k.kind == "leaf" for k in p_.kids) and not MEMSIM: rpush(p_)
+        else:
+            parents, root = build_merkle(SZ, prim, nodes); roots.append(root)
+            for p_ in parents:
+                if p_.level == 1 and not MEMSIM: rpush(p_)                          # memory model: when both leaves are on chip
         work_total += len(parents)
     MSLOTS = (48 if (prim == 5 and PACK) else 64 if (prim == 5 and NENG) else KM) if prim in (4, 5) else 0
     def top(nd): return nd.level > SZ - TOPL                                          # result of a parent near the root
@@ -245,6 +292,7 @@ if MEMSIM:
         BG = [[deque(trc), 0, (k + 1) << 26] for k in range(int(nb))]                 # queue, cycles behind the recorded pace, address offset 64 MB x k
     BGTAG = 1 << 40                                                                   # tags of the other cores' reads
     STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
+    if OPENREQ: STORE = "out"                                                         # the open writes the proof (pw) and the recomputed root only
     KSK = int(STORE[1:]) if STORE.startswith("k") else (0 if STORE == "all" else 1 << 30)   # levels (above the leaves) not stored
     def stored(l):                                                                    # is level l (0 = leaves) written to HBM
         if REQ == "merkle": return l == SZ or 1 <= l and l > KSK                      # root always; leaves are the input
@@ -360,8 +408,10 @@ if MEMSIM:
             open_hi += 1; open_budget += 1 << TK
         return open_hi >= tl
     if REQ == "merkle":
-        for lf in sorted((k for p_ in nodes if p_.kind == "m" and p_.level == 1 for k in p_.kids), key=lambda x: x.idx):
-            rq.append(lf); tile_left[lf.idx >> TK] = tile_left.get(lf.idx >> TK, 0) + 1
+        if OPENREQ:
+            for j in range(1 << (SZ - TK)): tile_left[j] = 0                           # the open's inputs are sparse: empty tiles are skipped
+        for lf in sorted((k for p_ in nodes if p_.kind == "m" for k in p_.kids if k.kind == "leaf"), key=lambda x: (tile_of(x), -x.level, x.idx)):
+            rq.append(lf); tile_left[tile_of(lf)] = tile_left.get(tile_of(lf), 0) + 1
     else:
         rq.append(groot)
         for j in range(1 << (SZ - TK)): tile_left[j] = 1 << TK                         # leaves still to produce per tile
@@ -409,7 +459,7 @@ if MEMSIM:
                     if took: pend_free.setdefault(t + delay, []).append(k)        # read at the issue cycle: freed then
                     else: took = True; mem_free(k)                               # its slot becomes the parent's result slot
                 else: mem_free(k)
-                if k.kind == "leaf": tile_left[k.idx >> TK] -= 1
+                if k.kind == "leaf": tile_left[tile_of(k)] -= 1
             while tile_left.get(cur_tile, 1) == 0: cur_tile += 1
             used += 1; peak()
         else:
@@ -445,7 +495,7 @@ if MEMSIM:
         for q in ((wq, rq) if len(wq) > CAP // 8 else (rq, wq)):                       # reads first unless the write backlog grows
             while q and b > 0:
                 x = q[0]
-                if q is rq and (used + 1 > CAP or (REQ == "merkle" and (x.idx >> TK) > cur_tile + 1)): break   # no room / beyond the double buffer
+                if q is rq and (used + 1 > CAP or (REQ == "merkle" and tile_of(x) > cur_tile + 1)): break   # no room / beyond the double buffer
                 acc = racc if q is rq else wacc
                 if b < 32 - acc:
                     acc += b; b = 0; act = True
@@ -486,8 +536,8 @@ if MEMSIM:
             while q and n < HPORT:
                 x = q[0]
                 if q is rq:
-                    if used + 1 > CAP or (REQ == "merkle" and (x.idx >> TK) > cur_tile + 1): break   # no room / beyond the double buffer
-                    a = addr("level", lam(x), x.idx)                                  # Merkle leaves (the leaf array) / the GGM root seed
+                    if used + 1 > CAP or (REQ == "merkle" and tile_of(x) > cur_tile + 1): break   # no room / beyond the double buffer
+                    a = addr(HLAY if x.level and REQ == "merkle" else "level", lam(x), x.idx)   # Merkle leaves (the leaf array) / stored siblings (the open) / the GGM root seed
                     if not HBMX.send(a, False, x.id): break                             # in order: a full controller queue stalls the stream
                     if AUDIT: assert not x.res and not x.rinf, "read twice"
                     q.popleft(); n += 1; act = True
@@ -496,7 +546,7 @@ if MEMSIM:
                     if AUDIT: hadd(x, 1); chk()
                     RROWS.touch(a // ROWB)
                 else:
-                    wa = addr(HLAY, lam(x), x.idx)
+                    wa = x.paddr if x.paddr is not None else addr(HLAY, lam(x), x.idx)   # the proof, or the stored tree
                     if not HBMX.send(wa, True, x.id): break
                     if AUDIT: assert x.res and x.nw and not x.wr, "write of a value not computed / not to be written / twice"
                     q.popleft(); n += 1; act = True
@@ -508,6 +558,7 @@ if MEMSIM:
             if tag >= BGTAG: continue                                                   # another core's
             x = nodes[tag]; x.rinf = False; x.res = True; hbm_rd += 32
             d = t + 1 - rsent.pop(tag); rlat[0] += 1; rlat[1] += d; rlat[2] = max(rlat[2], d)
+            if x.pw: x.nw = True; wpend += 1; wq.append(x)                            # an opened leaf / sibling: into the proof
             if REQ == "merkle":
                 if all(k.res for k in x.mparent.kids): rpush(x.mparent)
             else: rpush(x)
@@ -581,7 +632,7 @@ def finish(nd, o):
         if MEMSIM:
             nd.res = True
             if nd.root: nd.cons = True
-            mem_out(nd, stored(lam(nd)) or nd.root)
+            mem_out(nd, stored(lam(nd)) or nd.root or nd.pw)
         if p is not None and all(k.done for k in p.kids): rpush(p)
     else:
         k0, k1 = nd.kids
@@ -834,6 +885,7 @@ def ref(nd):
     return merkle_fn(nd.prim, ref(nd.kids[0]), ref(nd.kids[1]), nd.root)
 for root in roots:
     ok &= root.done and ref(root) == root.result
+    if OPENREQ: ok &= root.result == OPEN_ROOT                                       # the paths hashed up to the committed root
 ok &= all(nd.done and nd.result == merkle_fn(nd.prim, nd.kids[0].result, nd.kids[1].result, nd.root) for nd in nodes if nd.kind == "m")
 
 cycles = len(prog)
@@ -845,6 +897,7 @@ ring_nt = [sum(len(i[3]) for r in prog for i in r["issue"] if i[1] == ri) for ri
 util = [f"ring {ri}: {ring_nt[ri] / (len(R['blocks']) * cycles):.4f}" for ri, R in enumerate(rings) if ring_nt[ri]]
 if mono_issues: util.append(f"Monolith: {mono_issues / (len(BASES) * cycles):.4f}")
 desc = {"merkle": lambda: f"{NT} x {MNAME[prim]} Merkle 2^{SZ} leaves ({ORDER})", "ggm": lambda: f"{NT} x {MNAME[prim]} GGM depth {SZ} ({ORDER})"}[REQ]()
+if OPENREQ: desc = f"open of {OPENQ} leaves of a {MNAME[prim]} Merkle 2^{SZ} (K = {OPENK}): {len(OPEN_INPUTS):,} inputs read, {work_total:,} compressions ({sum(1 for nd in nodes if nd.kind == 'm' and nd.level <= OPENK):,} at the {OPENK} unstored levels), {OPEN_PROOF:,} proof values written"
 print(f"request: {desc}   unit: {NDP} Monolith ring(s) of {KM} slots x {NISS[4]} traversals; ARX rings {[(len(R['blocks']), R['K']) for R in rings]} (blocks, period = sum over spans of latency + 1)")
 print(f"  nodes computed      {work_total:,}")
 print(f"  cycles              {cycles:,}   (Monolith issues {mono_issues:,}; ARX ring traversals {exec_issues})")
@@ -857,12 +910,12 @@ if MEMSIM: assert not stage, f"{len(stage)} rows never completed"
 if MEMSIM and OPEN: print_open()
 if MEMSIM and AUDIT:                                                                  # end of run: every value written once iff stored, SRAM back to the residents
     def must_write(nd):
-        if REQ == "merkle": return nd.kind == "m" and (stored(lam(nd)) or nd.root)
+        if REQ == "merkle": return (nd.kind == "m" and (stored(lam(nd)) or nd.root)) or nd.pw
         return nd.level > 0 and stored(lam(nd))
     nw_ = sum(1 for nd in nodes if must_write(nd))
-    assert all(nd.nwr == (1 if must_write(nd) else 0) and nd.nw == must_write(nd) for nd in nodes if nd.kind != "leaf"), "a node written not exactly once iff stored"
+    assert all(nd.nwr == (1 if must_write(nd) else 0) and nd.nw == must_write(nd) for nd in nodes if nd.kind != "leaf" or nd.pw), "a node written not exactly once iff stored"
     assert hbm_wr == 32 * nw_, (hbm_wr, nw_)
-    assert hbm_rd == 32 * ((1 << SZ) if REQ == "merkle" else 1), hbm_rd
+    assert hbm_rd == 32 * (len(OPEN_INPUTS) if OPENREQ else (1 << SZ) if REQ == "merkle" else 1), hbm_rd
     assert not rq and not wq and not rsent and fly == 0 and wpend == 0, (len(rq), len(wq), len(rsent), fly, wpend)
     nres = sum(1 for nd in nodes if resident(nd) and nd.res and not nd.freed)
     assert used == nres and all(nd.freed or resident(nd) for nd in nodes if nd.res or nd.tk), (used, nres)
