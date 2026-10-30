@@ -304,6 +304,8 @@ if MEMSIM:
     def resident(x): return RTOP > 0 and lam(x) > SZ - RTOP
     if REQ == "merkle":                                                               # Merkle: tile = 2^TK leaves, two leaf tiles (double buffer) in half the SRAM
         TK = max(1, min(SZ, int(next((a[5:] for a in sys.argv[5:] if a.startswith("tile=")), str((CAP // 4).bit_length() - 1))))); WT = 2
+    WIN = int(next((a[4:] for a in sys.argv[5:] if a.startswith("win=")), str((1 << 20) if OPENREQ else 1)))   # Merkle reads run WIN tiles ahead of the current one
+    # (1 = the double buffer; the open's inputs are sparse and consumed in path order, so only the SRAM limits its reads)
     GSCHED = next((a[7:] for a in sys.argv[5:] if a.startswith("gsched=")), "dfs")
     WFLY = (2 * MSLOTS) if prim in (4, 5) else sum(len(GBLK[spans[0]]) * sum(GD[g] + 1 for g in spans) for spans in CH)   # nodes the pipeline holds (ring slots)
     AHEAD = int(next((a[6:] for a in sys.argv[5:] if a.startswith("ahead=")), "0"))
@@ -496,7 +498,7 @@ if MEMSIM:
         for q in ((wq, rq) if len(wq) > CAP // 8 else (rq, wq)):                       # reads first unless the write backlog grows
             while q and b > 0:
                 x = q[0]
-                if q is rq and (used + 1 > CAP or (REQ == "merkle" and tile_of(x) > cur_tile + 1)): break   # no room / beyond the double buffer
+                if q is rq and (used + 1 > CAP or (REQ == "merkle" and tile_of(x) > cur_tile + WIN)): break   # no room / beyond the double buffer
                 acc = racc if q is rq else wacc
                 if b < 32 - acc:
                     acc += b; b = 0; act = True
@@ -537,7 +539,7 @@ if MEMSIM:
             while q and n < HPORT:
                 x = q[0]
                 if q is rq:
-                    if used + 1 > CAP or (REQ == "merkle" and tile_of(x) > cur_tile + 1): break   # no room / beyond the double buffer
+                    if used + 1 > CAP or (REQ == "merkle" and tile_of(x) > cur_tile + WIN): break   # no room / beyond the double buffer
                     a = addr(HLAY if x.level and REQ == "merkle" else "level", lam(x), x.idx)   # Merkle leaves (the leaf array) / stored siblings (the open) / the GGM root seed
                     if not HBMX.send(a, False, x.id): break                             # in order: a full controller queue stalls the stream
                     if AUDIT: assert not x.res and not x.rinf, "read twice"
