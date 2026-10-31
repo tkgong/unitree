@@ -9,7 +9,7 @@ and the sibling of every path node that is not itself on an opened path), GGM = 
   GPU   gpu_trees2.so: 8 trees stored with every level (134 MB, device resident), one gather kernel over the 8 sets
         (open_bench); board power from nvidia-smi during a >= 5 s loop of the kernel, idle measured before.
   unit  one core, 2 GDDR6 channels, the adaptive store policy (memsim/results/policy18.md): ARX K = 4 (the 4 levels above
-        the leaves are not stored), Monolith K = 0 (everything stored).
+        the leaves are not stored; ARX Merkle K = 5), Monolith K = 0 (everything stored).
           (a) the stored nodes of the set are read and the opened set is written out as the proof, one mixed stream through
               the Ramulator2 GDDR6 model (hbm.batch, block layout, 2 channels, cycle level);
           (b) K > 0: the unstored nodes are recomputed by a compiled program on the unit model, cycle by cycle, bit-exact:
@@ -222,7 +222,7 @@ for (req, prim, kind, impl, K, PW) in PROGS:
               f"vs GPU {g_tot / u_cyc:5.2f}x, vs CPU {c_tot / u_cyc:6.1f}x; check {'OK' if bad == 0 else f'{bad} BAD'}", flush=True)
 json.dump(rows, open(os.path.join(OUT, f"open18{SUF}.json"), "w"), indent=1)
 L = [f"# Opening q leaves of a 2^18 tree: CPU / GPU / unit (dana336, {time.strftime('%Y-%m-%d')})", "",
-     f"See the docstring of `memsim/open18.py` for the method. Unit: one core per tree, 2 GDDR6 channels, 1 GHz, adaptive K (ARX 4, Monolith 0); unit idle power {P_IDLE:.3f} W "
+     f"See the docstring of `memsim/open18.py` for the method. Unit: one core per tree, 2 GDDR6 channels, 1 GHz, adaptive K (ARX Merkle 5, ARX GGM 4, Monolith 0); unit idle power {P_IDLE:.3f} W "
      f"(vectorless, no data toggling), program power from `power.md`; the DRAM's energy is not in the unit's number. GPU: RTX 3070, 8 trees per call, idle {GPU_IDLE:.1f} W. CPU: i7-10700K, {THREADS} threads, 8 trees in sequence; no energy (RAPL root-only).", "",
      "| program | q | opened nodes / tree | recomputed | unit cycles: GGM stream + program / Merkle open program (engine utilization) | unit us (8 trees) | unit uJ / tree | GPU us gather + paths (8 trees) | GPU uJ / tree above idle (board) | CPU us gather + paths (8 trees) | vs GPU | vs CPU | energy vs GPU above idle | check |",
      "|---|---:|---:|---:|---|---:|---:|---|---:|---|---:|---:|---:|---|"]

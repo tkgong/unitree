@@ -146,5 +146,55 @@ what it could have stored for free, and with Monolith's 4.5x lower hash throughp
 
 ## 5. The open: CPU / GPU / unit
 
-`memsim/open18.py`, results in `open18.md` (the same opened sets on the three platforms, the GPU's output checked node by
-node against the CPU's stored tree).
+`memsim/open18.py`, results in `open18.md` (adaptive K) and `open18_rigid.md` (the rigid store policies). The open of q
+random leaves of a committed 2^18 tree = the proof (the opened leaves and the merged authentication-path siblings, 32 B
+each, written out) plus, for Merkle, the paths hashed up to the root (log2 n = 18 compressions per opened leaf, shared
+where paths merge); GGM = the co-path seeds (no compression chain). The same opened sets on the three platforms; the GPU's
+proof and roots checked against the CPU's stored tree, the unit's against the Python reference and the committed root.
+Unit: one core per tree, 2 GDDR6 channels; Merkle as one compiled program (`compile_tree.py open`: stored siblings read,
+the K unstored levels recomputed from their leaves, every path hashed to the root, the proof written; closed loop on the
+GDDR6 model, cycle by cycle, bit-exact); GGM = the co-path stream through the GDDR6 model + the recompute program. GPU:
+RTX 3070, 8 trees per call, a gather kernel (the proof) + one kernel per level over the distinct path nodes; board power
+minus idle. CPU: i7-10700K, 16 threads, level-synchronous over the distinct path nodes, 8 trees in sequence. 8 cores open
+8 trees at once, so the unit's time for 8 trees = one core's cycles at 1 GHz. Energy: unit = idle 1.70 W (vectorless, no
+data toggling) + (program power - idle) x engine utilization, over the program's cycles, DRAM not included; GPU board
+minus idle, includes its GDDR6.
+
+| program (adaptive K) | q | compressions / tree | unit us (engine util.) | GPU us (gather + paths) | CPU us | vs GPU | vs CPU | unit uJ / tree | GPU uJ / tree | energy vs GPU |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| BLAKE3 Merkle, K 5 | 64 | 765 + 3,648 recomputed | 6.6 (52%) | 2.1 + 65.0 | 561 | 10.1x | 85x | 18 | 223 | 12x |
+| | 1,024 | 8,325 + 55,924 | 60.7 (73%) | 14.9 + 75.0 | 856 | 1.48x | 14x | 194 | 750 | 3.9x |
+| | 4,096 | 25,158 + ~140k | 165.0 | 40.8 + 136.2 | 2,366 | 1.07x | 14x | 534 | 2,224 | 4.2x |
+| | 16,384 | 69,657 + ~215k | 285.2 | 102.3 + 280.3 | 6,229 | 1.34x | 22x | 880 | 6,067 | 6.9x |
+| Monolith Merkle, K 0 | 64 | 765 | 4.9 (54%) | 2.1 + 405.4 | 2,175 | 83x | 442x | 14 | 914 | 66x |
+| | 1,024 | 8,325 | 31.3 (93%) | 15.1 + 417.4 | 7,059 | 13.8x | 225x | 114 | 3,044 | 27x |
+| | 4,096 | 25,158 | 93.4 | 41.0 + 672.5 | 18,299 | 7.6x | 196x | 341 | 8,122 | 24x |
+| | 16,384 | 69,657 | 257.9 | 101.0 + 1,243.5 | 50,123 | 5.2x | 194x | 943 | 21,069 | 22x |
+| ChaCha20 GGM, K 4 (= BLAKE3 GGM) | 64 | 0 (+ 256 expansions) | 2.0 | 1.8 | 18.6 | 0.94x | 9.5x | 4.4 | 8.9 | 2.0x |
+| | 1,024 | 0 (+ 3,442) | 16.1 | 14.4 | 313 | 0.90x | 19x | 33 | 163 | 4.9x |
+| | 16,384 | 0 (+ 35,095) | 102.5 | 81.7 | 474 | 0.80x | 4.6x | 237 | 1,081 | 4.6x |
+
+- Merkle: the open is hash-bound at the unit (73-93% engine utilization from q = 1,024) and the unit wins by the same
+  kind of margin as the commit does, reduced by its memory side (random 32 B reads on 2 channels run at ~22 B / cycle,
+  half the sequential rate; writes are staged and burst). The GPU's path hashing is 18 dependent kernels: launch and
+  latency bound below q ~ 1,000 (a Monolith permutation on one thread takes ~20 us; 55 us for BLAKE3's 18 levels), near its
+  commit throughput at q = 16,384 (2.2 ns per Monolith compression, 0.5 ns per BLAKE3 one).
+- GGM: no compressions; a random gather through a 2-channel core against the GPU's 16 channels: 0.8-0.9x, 4-5x less
+  energy.
+- End to end (commit + open, 8 trees, q = 1,024 / 16,384): BLAKE3 Merkle GPU 656 / 949 us vs unit 270 / 495 us (2.4x /
+  1.9x); ChaCha20 GGM 1,176 / 1,244 vs 222 / 308 (5.3x / 4.0x); Monolith Merkle 4,013 / 4,925 vs 951 / 1,178 (4.2x / 4.2x).
+
+The rigid store policies at the open (`open18_rigid.md`; the commit side is in section 4):
+
+| | q = 64 | 256 | 1,024 | 4,096 | 16,384 |
+|---|---:|---:|---:|---:|---:|
+| Monolith open, K 4 (ARX's policy) vs K 0: unit us | 10.6 vs 4.9 | 34.1 vs 11.7 | 119.0 vs 31.3 | 373.2 vs 93.4 | 804.2 vs 257.9 |
+| slower / more energy | 2.1x / 2.6x | 2.9x / 3.2x | **3.8x / 3.9x** | **4.0x / 4.1x** | **3.1x / 3.2x** |
+| commit + open vs adaptive (commit 919.7 us either way) | +0.6% | +2.4% | **+8.7%** | **+28%** | **+46%** |
+| BLAKE3 Merkle open, K 0 (keep everything) vs K 5: unit us | 4.4 vs 6.6 | 11.1 vs 19.9 | 30.2 vs 60.7 | 75.4 vs 165.0 | 159.5 vs 285.2 |
+| commit + open vs adaptive (commit 408.0 vs 209.7 us) | 1.91x slower | 1.83x | 1.62x | 1.29x | **1.26x slower** |
+| ChaCha20 GGM open, K 0 vs K 4: unit us | 2.2 vs 2.0 | 6.6 vs 5.7 | 20.0 vs 16.1 | 50.8 vs 44.0 | 105.6 vs 102.5 |
+
+Both directions are significant: Monolith with ARX's K pays 3-4x at the open and up to +46% end to end at FRI-scale
+query counts; ARX with Monolith's keep-everything is 1.3-1.9x slower end to end at every q (its open is faster, its commit
+twice as slow); GGM with keep-everything loses on both.

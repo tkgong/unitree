@@ -49,3 +49,24 @@ Sharing (`unit18_shared` against `unit18_mono + unit18_chacha + unit18_blake3`, 
 
 Timing: WNS 0.00 at 1 ns on all four tops with every input driven by a flip-flop (`timing/timing.md`); `test/regress.sh`
 rebuilds the four netlists byte-identical from the checkout.
+
+## Memory policy and the open (`memsim/results/policy18.md`, `open18.md`)
+
+The compiler's memory policy is per primitive and tree direction (analysis, sweeps and ablation in `policy18.md`): Merkle
+subtree = 2^8 leaves for ARX (the read stream's window), 2^6..8 for Monolith (pipeline width), GGM subtree = 2^3 (open
+subtrees x occupancy + the deadlock reserve); the levels not stored K = 5 (ARX Merkle), 4 (ARX GGM), 0 (Monolith). One rigid
+setting for all costs 17-55% of the engine utilization at the commit or 3-4x at the open.
+
+The open of q leaves (the proof written, the paths hashed to the root; `memsim/open18.py`, 8 trees):
+
+| program | q | unit us | GPU us | CPU us | vs GPU | vs CPU | unit uJ / tree | GPU uJ / tree (above idle) | energy vs GPU |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| BLAKE3 Merkle (K 5) | 1,024 | 60.7 | 89.9 | 856 | 1.48x | 14x | 194 | 750 | 3.9x |
+| | 16,384 | 285.2 | 382.6 | 6,229 | 1.34x | 22x | 880 | 6,067 | 6.9x |
+| ChaCha20 GGM (K 4) | 1,024 | 16.1 | 14.4 | 313 | 0.90x | 19x | 33 | 163 | 4.9x |
+| | 16,384 | 102.5 | 81.7 | 474 | 0.80x | 4.6x | 237 | 1,081 | 4.6x |
+| Monolith-31 Merkle (K 0) | 1,024 | 31.3 | 432.5 | 7,059 | 13.8x | 225x | 114 | 3,044 | 27x |
+| | 16,384 | 257.9 | 1,344.6 | 50,123 | 5.2x | 194x | 943 | 21,069 | 22x |
+
+Commit + open, 8 trees, q = 1,024 / 16,384: BLAKE3 Merkle 2.4x / 1.9x, ChaCha20 GGM 5.3x / 4.0x, Monolith Merkle 4.2x / 4.2x
+faster than the GPU. The unit's open energy excludes the DRAM; the GPU's includes its GDDR6.
