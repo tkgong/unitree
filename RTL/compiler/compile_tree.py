@@ -637,7 +637,7 @@ def finish(nd, o):
             nd.res = True
             if nd.root: nd.cons = True
             mem_out(nd, stored(lam(nd)) or nd.root or nd.pw)
-        if p is not None and all(k.done for k in p.kids): rpush(p)
+        if p is not None and all((k.res if MEMSIM else k.done) for k in p.kids): rpush(p)   # memory model: the other child must be on chip (an input of the open is read, not computed)
     else:
         k0, k1 = nd.kids
         k0.result, k1.result = o[:8], o[8:16]; k0.done = k1.done = True; live += 2
