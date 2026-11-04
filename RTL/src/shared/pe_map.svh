@@ -18,7 +18,8 @@
 //  * every other register is selected on a generic lane: a lane whose ARX value in no program is an XOR of a sum of the
 //    same step (the select sits after an ARX path without the add -> XOR depth: timing), no sum lane, no lane holding a
 //    lent delay, no chain cell:
-//      level 2: 1 5 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 7 18..21 (41 per block;
+//      level 2: 1 5 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 18..21 (40 per block;
+//      level 6 lane 7: copy 0's ChaCha20 step 6 writes B' there in the shared layout, axn_step.sv LAY = 1;
 //      level 1 holds the clean slots and the chain heads, levels 2 / 5 lanes 2 / 6 the operand lanes)
 //      generic slots: private adders without delays | the lent delays that are not free (d1, then d2, then d3) | the 41
 //      reductions | br (16) | the 16 K constants | the 16 outputs | the first stage's 4th slot of squarers 13..15 | the
@@ -195,11 +196,11 @@
     endfunction
 
     // generic lanes (closed forms, no loops); level 1 holds the clean slots and the chain heads only
-    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 0 4 4 14 14 5
+    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 0 4 4 14 14 4
         begin
             case (lv)
                 1: gfree = 0;  2, 3: gfree = 4;  4, 5: gfree = 14;
-                default: gfree = 5;
+                default: gfree = 4;
             endcase
         end
     endfunction
@@ -208,7 +209,7 @@
             case (lv)
                 1, 2: gbelow = 0;  3: gbelow = 4;
                 4: gbelow = 8;  5: gbelow = 22;  6: gbelow = 36;
-                default: gbelow = 41;
+                default: gbelow = 40;
             endcase
         end
     endfunction
@@ -220,7 +221,7 @@
                 3:    gidx = (l == 3) ? 0 : (l == 7) ? 1 : (l >= 20) ? l - 18 : -1;
                 4:    gidx = (l == 3) ? 0 : (l >= 7 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
                 5:    gidx = (l == 1) ? 0 : (l == 5) ? 1 : (l >= 8 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
-                default: gidx = (l == 7) ? 0 : (l >= 18) ? l - 17 : -1;
+                default: gidx = (l >= 18) ? l - 18 : -1;
             endcase
         end
     endfunction
@@ -232,16 +233,16 @@
                 3:    glane = (k == 0) ? 3 : (k == 1) ? 7 : k + 18;
                 4:    glane = (k == 0) ? 3 : (k < 10) ? k + 6 : k + 8;
                 5:    glane = (k == 0) ? 1 : (k == 1) ? 5 : (k < 10) ? k + 6 : k + 8;
-                default: glane = (k == 0) ? 7 : k + 17;
+                default: glane = k + 18;
             endcase
         end
     endfunction
     function automatic integer gpos(input integer v);         // first bit of generic slot v in the PE vector
         integer g, nb, r, lv, rr;
         begin
-            g  = (v < 5 * 41) ? 0 : 1;
+            g  = (v < 5 * 40) ? 0 : 1;
             nb = (g == 0) ? 5 : 4;
-            r  = (g == 0) ? v : v - 5 * 41;
+            r  = (g == 0) ? v : v - 5 * 40;
             lv = (r < nb * 4) ? 2 : (r < nb * 8) ? 3 : (r < nb * 22) ? 4 : (r < nb * 36) ? 5 : 6;
             rr = r - nb * gbelow(lv);
             gpos = g * 6 * 5 * PM_LW + (lv - 1) * nb * PM_LW + ((rr / gfree(lv)) * 22 + glane(lv, rr % gfree(lv))) * 64;
@@ -272,7 +273,7 @@
             if (op_lane(g, lv, b, l) >= 0) begin
                 lane_slot = OP0 + op_lane(g, lv, b, l);
             end else if (k >= 0) begin
-                v = g * 5 * 41 + nb * gbelow(lv) + b * gfree(lv) + k;
+                v = g * 5 * 40 + nb * gbelow(lv) + b * gfree(lv) + k;
                 if (v < NV) lane_slot = v;
             end else if (lv == 1 && chidx(l) >= 0) begin
                 v = g * 5 * 10 + b * 10 + chidx(l);

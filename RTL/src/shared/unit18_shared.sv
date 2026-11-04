@@ -73,15 +73,16 @@ module unit18_shared (
         .ea(ea0), .eb(eb0), .ey(ey0), .mn(mn0), .ms(ms0), .mq(pr0));
     mono_dp18 #(.NL(216), .PB(PB), .CP(1), .NUP(NS * 64)) u_dp1 (.clk(clk), .rst(rst), .x(lin[448*64 +: 8*64]), .mono(mono2), .r(r2), .y(lout[448*64 +: 8*64]),
         .ea(ea1), .eb(eb1), .ey(ey1), .mn(mn1), .ms(ms1), .mq(pr1));
+    // The block groups run the shared ChaCha20 layout (LAY = 1, axn_step.sv: copy 1's steps 1 / 2 on the BLAKE3 lanes).
     // PE 0: group 0 (5 blocks) on adders 0..119, group 1 (4 blocks) on 120..215
-    arx_group #(.NBK(5), .BL(BL), .CP(0), .PRIV(0), .EXT(1)) u_g0 (.clk(clk), .x(lin[0 +: 5*BL*64]), .r(rg[0 +: 9]), .blake(blake),
+    arx_group #(.NBK(5), .BL(BL), .CP(0), .PRIV(0), .EXT(1), .LAY(1)) u_g0 (.clk(clk), .x(lin[0 +: 5*BL*64]), .r(rg[0 +: 9]), .blake(blake),
         .y(lout[0 +: 5*BL*64]), .ea(ea0[0 +: 120*32]), .eb(eb0[0 +: 120*32]), .ey(ey0[0 +: 120*32]), .an(an0[0 +: G0]), .aq(pr0[0 +: G0]));
-    arx_group #(.NBK(4), .BL(BL), .CP(0), .PRIV(0), .EXT(1)) u_g1 (.clk(clk), .x(lin[110*64 +: 4*BL*64]), .r(rg[9 +: 9]), .blake(blake),
+    arx_group #(.NBK(4), .BL(BL), .CP(0), .PRIV(0), .EXT(1), .LAY(1)) u_g1 (.clk(clk), .x(lin[110*64 +: 4*BL*64]), .r(rg[9 +: 9]), .blake(blake),
         .y(lout[110*64 +: 4*BL*64]), .ea(ea0[120*32 +: 96*32]), .eb(eb0[120*32 +: 96*32]), .ey(ey0[120*32 +: 96*32]), .an(an0[G0 +: G1]), .aq(pr0[G0 +: G1]));
     // PE 1
-    arx_group #(.NBK(5), .BL(BL), .CP(1), .PRIV(0), .EXT(1)) u_g2 (.clk(clk), .x(lin[198*64 +: 5*BL*64]), .r(rg[18 +: 9]), .blake(blake),
+    arx_group #(.NBK(5), .BL(BL), .CP(1), .PRIV(0), .EXT(1), .LAY(1)) u_g2 (.clk(clk), .x(lin[198*64 +: 5*BL*64]), .r(rg[18 +: 9]), .blake(blake),
         .y(lout[198*64 +: 5*BL*64]), .ea(ea1[0 +: 120*32]), .eb(eb1[0 +: 120*32]), .ey(ey1[0 +: 120*32]), .an(an1[0 +: G0]), .aq(pr1[0 +: G0]));
-    arx_group #(.NBK(4), .BL(BL), .CP(1), .PRIV(0), .EXT(1)) u_g3 (.clk(clk), .x(lin[308*64 +: 4*BL*64]), .r(rg[27 +: 9]), .blake(blake),
+    arx_group #(.NBK(4), .BL(BL), .CP(1), .PRIV(0), .EXT(1), .LAY(1)) u_g3 (.clk(clk), .x(lin[308*64 +: 4*BL*64]), .r(rg[27 +: 9]), .blake(blake),
         .y(lout[308*64 +: 4*BL*64]), .ea(ea1[120*32 +: 96*32]), .eb(eb1[120*32 +: 96*32]), .ey(ey1[120*32 +: 96*32]), .an(an1[G0 +: G1]), .aq(pr1[G0 +: G1]));
     assign lout[404*64 +: 44*64] = '0;                        // lanes 404..447: no state (the HLS datapath's internal lanes)
 endmodule

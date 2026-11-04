@@ -11,9 +11,16 @@
 // use copies 4..7 and the step-6 row temporaries copies 8..10 (the message / T / h lanes, which need no selects of their own),
 // so that no control bit fans out beyond ~2 x 64 selects: the control fanout was the head of the critical path.
 
+// LAY = 1 (the shared unit): the ChaCha20 rows of copy 0 leave step 6 as C0 A1 D2 B3 (no P there, the lanes are written
+// anyway) and copy 1's steps 1 / 2 work on the lanes BLAKE3 uses: step 1 A' = A + B (lanes 1, 3) to lane 1 and
+// D' = rotl8(D ^ A') (the xor with lane 2) to T (lanes 16 / 17, the BLAKE3 sum lanes), step 2 C' = C + D on lanes 0 / T
+// (the BLAKE3 operands: no operand select) with the xor of lane 3 (no second xor), then P to C0 D1 A2 B3 as before.
+// LAY = 0: the natural layout (the ChaCha20-only unit). RTL/compiler/bind/arx_steps.py LAY, checked against the
+// reference models (check_arx_steps.py).
 module axn_ops #(
     parameter int STEP = 1,
-    parameter int CP   = 0
+    parameter int CP   = 0,
+    parameter int LAY  = 0
 ) (
     input  logic [22*64-1:0] S,
     input  logic [10:0]      r0,
@@ -34,9 +41,12 @@ module axn_ops #(
     logic [63:0] a0, a1, b0, b1;                             // words(a0, a1, EA), words(b0, b1, EB): copies 4, 5, 6, 7
     always_comb begin : ops_c
         case (STEP)
-            1: begin a0 = sv[1]; a1 = sv[5];
+            1: if (CP == 1 && LAY == 1) begin a0 = sv[1]; a1 = sv[5];
+                     b0 = bk[6] ? (diag[6] ? sv[12] : sv[8]) : sv[3]; b1 = bk[7] ? (diag[7] ? sv[14] : sv[10]) : sv[7]; end
+               else begin a0 = sv[1]; a1 = sv[5];
                      b0 = bk[6] ? (diag[6] ? sv[12] : sv[8]) : sv[0]; b1 = bk[7] ? (diag[7] ? sv[14] : sv[10]) : sv[4]; end
             2: if (CP == 0) begin a0 = sv[0]; a1 = sv[4]; b0 = bk[6] ? sv[16] : sv[1]; b1 = bk[7] ? sv[17] : sv[5]; end
+               else if (LAY == 1) begin a0 = sv[0]; a1 = sv[4]; b0 = sv[16]; b1 = sv[17]; end
                else begin a0 = bk[4] ? sv[0] : sv[2]; a1 = bk[5] ? sv[4] : sv[6]; b0 = bk[6] ? sv[16] : sv[3]; b1 = bk[7] ? sv[17] : sv[7]; end
             3: begin a0 = sv[2]; a1 = sv[6]; b0 = ff[6] ? sv[8] : sv[3]; b1 = ff[7] ? sv[10] : sv[7]; end
             4: begin a0 = sv[1]; a1 = sv[5];
@@ -52,7 +62,8 @@ endmodule
 
 module axn_fin #(
     parameter int STEP = 1,
-    parameter int CP   = 0
+    parameter int CP   = 0,
+    parameter int LAY  = 0
 ) (
     input  logic [22*64-1:0] S,
     input  logic [10:0]      r0,
@@ -80,13 +91,14 @@ module axn_fin #(
     assign s2 = EY[127:64];
     // the step's two row xors: steps 3, 6 xor B (sv1, sv5) with the sums, the others D (sv3, sv7)
     logic [63:0] xa, xb, x1, x2;
-    assign xa = (STEP == 3 || STEP == 6) ? sv[1] : sv[3];
-    assign xb = (STEP == 3 || STEP == 6) ? sv[5] : sv[7];
+    localparam bit L1 = (CP == 1) && (LAY == 1);                // copy 1, the shared layout
+    assign xa = (STEP == 3 || STEP == 6) ? sv[1] : (STEP == 1 && L1) ? sv[2] : sv[3];
+    assign xb = (STEP == 3 || STEP == 6) ? sv[5] : (STEP == 1 && L1) ? sv[6] : sv[7];
     alu_xor u_x1 (.a(xa), .b(s1), .y(x1));
     alu_xor u_x2 (.a(xb), .b(s2), .y(x2));
     logic [63:0] y1, y2;                                      // step 2 CP 1: b' = rotl7(B ^ c')
     logic [7:0][63:0] o, z;                                   // step 6: rows after P; z = the last-round finalisation xors
-    if (STEP == 2 && CP == 1) begin : g_y
+    if (STEP == 2 && CP == 1 && !L1) begin : g_y
         alu_xor u_y1 (.a(sv[1]), .b(s1), .y(y1));
         alu_xor u_y2 (.a(sv[5]), .b(s2), .y(y2));
     end else begin : g_noy
@@ -116,10 +128,17 @@ module axn_fin #(
     assign p6b = prow(1, b61, b62);
     assign p6c = prow(2, c61, c62);
     assign p6d = prow(3, sv[3], sv[7]);
-    assign o[0] = g[0] ? p6a[63:0] : sv[0];  assign o[4] = g[2] ? p6a[127:64] : sv[4];
-    assign o[1] = g[0] ? p6b[63:0] : b61;    assign o[5] = g[2] ? p6b[127:64] : b62;
-    assign o[2] = g[1] ? p6c[63:0] : c61;    assign o[6] = g[3] ? p6c[127:64] : c62;
-    assign o[3] = g[1] ? p6d[63:0] : sv[3];  assign o[7] = g[3] ? p6d[127:64] : sv[7];
+    if (CP == 0 && LAY == 1) begin : g_o1                    // copy 0's ChaCha20 rows leave as C0 A1 D2 B3
+        assign o[0] = g[0] ? p6a[63:0] : c61;    assign o[4] = g[2] ? p6a[127:64] : c62;
+        assign o[1] = g[0] ? p6b[63:0] : sv[0];  assign o[5] = g[2] ? p6b[127:64] : sv[4];
+        assign o[2] = g[1] ? p6c[63:0] : sv[3];  assign o[6] = g[3] ? p6c[127:64] : sv[7];
+        assign o[3] = g[1] ? p6d[63:0] : b61;    assign o[7] = g[3] ? p6d[127:64] : b62;
+    end else begin : g_o0
+        assign o[0] = g[0] ? p6a[63:0] : sv[0];  assign o[4] = g[2] ? p6a[127:64] : sv[4];
+        assign o[1] = g[0] ? p6b[63:0] : b61;    assign o[5] = g[2] ? p6b[127:64] : b62;
+        assign o[2] = g[1] ? p6c[63:0] : c61;    assign o[6] = g[3] ? p6c[127:64] : c62;
+        assign o[3] = g[1] ? p6d[63:0] : sv[3];  assign o[7] = g[3] ? p6d[127:64] : sv[7];
+    end
     // step 6: sigma = 2 6 3 10 7 0 4 13 1 11 12 5 9 14 15 8 on the message lanes (wiring)
     logic [7:0][63:0] p;
     assign p[0] = pk(sv[8][63:32],  sv[9][63:32]);
@@ -137,7 +156,13 @@ module axn_fin #(
         case (STEP)
         1: begin
             m[16] = s1; m[17] = s2;
-            if (CP == 0) begin
+            if (L1) begin                                    // A1 B3 C0 D2: A' to lane 1, D' = rotl8(D ^ A') to T
+                m[16] = bk[8] ? s1 : rotl2x32(x1, 8);        m[17] = bk[8] ? s2 : rotl2x32(x2, 8);
+                m[0] = sv[0];                                m[4] = sv[4];
+                m[1] = bk[0] ? sv[1] : s1;                   m[5] = bk[2] ? sv[5] : s2;
+                m[2] = sv[2];                                m[6] = sv[6];
+                m[3] = sv[3];                                m[7] = sv[7];
+            end else if (CP == 0) begin
                 m[0] = bk[0] ? sv[0] : sv[2];                m[4] = bk[2] ? sv[4] : sv[6];
                 m[1] = bk[0] ? sv[1] : rotl2x32(x1, 16);     m[5] = bk[2] ? sv[5] : rotl2x32(x2, 16);
                 m[2] = bk[1] ? sv[2] : s1;                   m[6] = bk[3] ? sv[6] : s2;
@@ -155,10 +180,16 @@ module axn_fin #(
                 m[3] = bk[1] ? rotl2x32(x1, 16) : rotl2x32(x1, 12); m[7] = bk[3] ? rotl2x32(x2, 16) : rotl2x32(x2, 12);
                 m[1] = sv[1]; m[5] = sv[5]; m[2] = sv[2]; m[6] = sv[6];
             end else begin
-                b1 = rotl2x32(y1, 7); b2 = rotl2x32(y2, 7);
+                if (L1) begin                                // C0 DT A1 B3: b' = rotl7(B ^ c') from the step's xor
+                    b1 = rotl2x32(x1, 7); b2 = rotl2x32(x2, 7);
+                    pd = prow(3, sv[16], sv[17]);            // d  -> B
+                    pa = prow(0, sv[1], sv[5]);              // a  -> C
+                end else begin
+                    b1 = rotl2x32(y1, 7); b2 = rotl2x32(y2, 7);
+                    pd = prow(3, sv[3], sv[7]);              // d  -> B
+                    pa = prow(0, sv[0], sv[4]);              // a  -> C
+                end
                 pc = prow(2, s1, s2);                        // c' -> A
-                pd = prow(3, sv[3], sv[7]);                  // d  -> B
-                pa = prow(0, sv[0], sv[4]);                  // a  -> C
                 pb = prow(1, b1, b2);                        // b' -> D
                 m[0] = bk[0] ? s1 : pc[63:0];                m[4] = bk[2] ? s2 : pc[127:64];
                 m[1] = bk[0] ? sv[1] : pd[63:0];             m[5] = bk[2] ? sv[5] : pd[127:64];

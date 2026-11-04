@@ -17,7 +17,8 @@ module arx_group #(
     parameter int CP   = 0,
     parameter int PRIV = 0,
     parameter int NA   = 4 * NBK * 6,
-    parameter int EXT  = 0
+    parameter int EXT  = 0,
+    parameter int LAY  = 0                                   // ChaCha20 layout (axn_step.sv): 1 in the shared unit
 ) (
     input  logic                 clk,
     input  logic [NBK*BL*64-1:0] x,
@@ -81,7 +82,7 @@ module arx_group #(
                 end else begin : g_18
                     assign sv = {{((22 - BL)*64){1'b0}}, R[s - 1][b*BL*64 +: BL*64]};
                 end
-                axn_ops #(.STEP(s), .CP(CP)) u_ops (.S(sv), .r0(r0[s - 1][b]), .r8(r8[s - 1][b]), .bk(bk[s - 1][b]), .EA(a), .EB(bb));
+                axn_ops #(.STEP(s), .CP(CP), .LAY(LAY)) u_ops (.S(sv), .r0(r0[s - 1][b]), .r8(r8[s - 1][b]), .bk(bk[s - 1][b]), .EA(a), .EB(bb));
                 if (PRIV) begin : g_priv
                     for (genvar q = 0; q < 4; q++) begin : g_add
                         alu_addp #(.W(32)) u_add (.a(a[q*32 +: 32]), .b(bb[q*32 +: 32]), .y(sum[q*32 +: 32]));
@@ -93,7 +94,7 @@ module arx_group #(
                     assign eb[Q*32 +: 128] = bb;
                     assign sum = ey[Q*32 +: 128];
                 end
-                axn_fin #(.STEP(s), .CP(CP)) u_fin (.S(sv), .r0(r0[s - 1][b]), .r8(r8[s - 1][b]), .bk(bk[s - 1][b]), .EY(sum), .M(m));
+                axn_fin #(.STEP(s), .CP(CP), .LAY(LAY)) u_fin (.S(sv), .r0(r0[s - 1][b]), .r8(r8[s - 1][b]), .bk(bk[s - 1][b]), .EY(sum), .M(m));
                 for (genvar l = 0; l < BL; l++) begin : g_lane
                     if (wmask(s, l)) begin : g_w
                         assign nxt[(b*BL + l)*64 +: 64] = m[l*64 +: 64];

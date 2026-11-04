@@ -5,6 +5,10 @@ A lane is a pair (lo, hi) of words; a block is 22 lanes (rows A 0,4  B 1,5  C 2,
 h 18..21). Controls of one traversal: blake, r (diag = r[0], r8 = r[8]), CP = the copy of the block group (0 or 1)."""
 
 M32 = (1 << 32) - 1
+LAY = 1   # 1: the shared unit's ChaCha20 layout (axn_step.sv LAY = 1): copy 0's step 6 leaves the rows at C0 A1 D2 B3, copy 1's
+          # steps 1 / 2 read the lanes BLAKE3 reads (step 1: A' to lane 1, D' to T; step 2: C + D on lanes 0 / T, the xor
+          # with lane 3: no select on the step-2 operands, no second xor); 0: the
+          # natural layout (the ChaCha20-only unit)
 
 
 class Int:                                     # integer backend
@@ -47,11 +51,14 @@ def step(s, CP, sv, blake, r, be):
     g = CP == 1 or bk
     perm = bk and diag
     # ---- operands (axn_ops) ----
+    lay1 = LAY and CP == 1
     if s == 1:
         a0, a1 = sv[1], sv[5]
-        b0 = (sv[12] if diag else sv[8]) if bk else sv[0]; b1 = (sv[14] if diag else sv[10]) if bk else sv[4]
+        b0 = (sv[12] if diag else sv[8]) if bk else (sv[3] if lay1 else sv[0])
+        b1 = (sv[14] if diag else sv[10]) if bk else (sv[7] if lay1 else sv[4])
     elif s == 2:
         if CP == 0: a0, a1, b0, b1 = sv[0], sv[4], (sv[16] if bk else sv[1]), (sv[17] if bk else sv[5])
+        elif lay1: a0, a1, b0, b1 = sv[0], sv[4], sv[16], sv[17]
         else: a0, a1, b0, b1 = (sv[0] if bk else sv[2]), (sv[4] if bk else sv[6]), (sv[16] if bk else sv[3]), (sv[17] if bk else sv[7])
     elif s == 3:
         a0, a1, b0, b1 = sv[2], sv[6], (sv[8] if ff else sv[3]), (sv[10] if ff else sv[7])
@@ -65,11 +72,22 @@ def step(s, CP, sv, blake, r, be):
         a0, a1, b0, b1 = (sv[9] if ff else sv[2]), (sv[11] if ff else sv[6]), sv[3], sv[7]
     s1, s2 = lane_add(be, a0, b0), lane_add(be, a1, b1)
     # ---- results (axn_fin) ----
-    xa, xb = (sv[1], sv[5]) if s in (3, 6) else (sv[3], sv[7])
+    xa, xb = (sv[1], sv[5]) if s in (3, 6) else (sv[2], sv[6]) if (s == 1 and lay1) else (sv[3], sv[7])
     x1, x2 = lane_xor(be, xa, s1), lane_xor(be, xb, s2)
     R = lambda v, n: lane_rotl(be, v, n)
     m = {}
-    if s == 1:
+    if s == 1 and lay1:                                  # A at 1, B 3, C 0, D 2 -> A' to T, D' to 1
+        m[16], m[17] = (s1, s2) if bk else (R(x1, 8), R(x2, 8))
+        m[0], m[4], m[2], m[6], m[3], m[7] = sv[0], sv[4], sv[2], sv[6], sv[3], sv[7]
+        m[1] = sv[1] if bk else s1; m[5] = sv[5] if bk else s2
+    elif s == 2 and lay1:                                # C at 0, D T, A 1, B 3 -> C0 D1 A2 B3 after P
+        b1, b2 = R(x1, 7), R(x2, 7)
+        pc, pd, pa, pb = prow(2, s1, s2), prow(3, sv[16], sv[17]), prow(0, sv[1], sv[5]), prow(1, b1, b2)
+        m[0] = s1 if bk else pc[0]; m[4] = s2 if bk else pc[1]
+        m[1] = sv[1] if bk else pd[0]; m[5] = sv[5] if bk else pd[1]
+        m[2] = sv[2] if bk else pa[0]; m[6] = sv[6] if bk else pa[1]
+        m[3] = R(x1, 16) if bk else pb[0]; m[7] = R(x2, 16) if bk else pb[1]
+    elif s == 1:
         m[16], m[17] = s1, s2
         if CP == 0:
             m[0] = sv[0] if bk else sv[2]; m[4] = sv[4] if bk else sv[6]
@@ -122,8 +140,12 @@ def step(s, CP, sv, blake, r, be):
         b62 = R(x2, 25) if bk else (s2 if ff else (R(x2, 12) if CP == 0 else R(x2, 7)))
         c61, c62 = (sv[2], sv[6]) if ff else (s1, s2)
         p6a, p6b, p6c, p6d = prow(0, sv[0], sv[4]), prow(1, b61, b62), prow(2, c61, c62), prow(3, sv[3], sv[7])
-        o = [p6a[0] if g else sv[0], p6b[0] if g else b61, p6c[0] if g else c61, p6d[0] if g else sv[3],
-             p6a[1] if g else sv[4], p6b[1] if g else b62, p6c[1] if g else c62, p6d[1] if g else sv[7]]
+        if g:
+            o = [p6a[0], p6b[0], p6c[0], p6d[0], p6a[1], p6b[1], p6c[1], p6d[1]]
+        elif LAY:                                        # copy 0 (ChaCha20): C0 A1 D2 B3, the layout copy 1 starts from
+            o = [c61, sv[0], sv[3], b61, c62, sv[4], sv[7], b62]
+        else:
+            o = [sv[0], b61, c61, sv[3], sv[4], b62, c62, sv[7]]
         if last:
             X = lambda a, b: lane_xor(be, a, b)
             z =[X(o[0], o[2]), X(o[4], o[6]), X(o[1], o[3]), X(o[5], o[7]),
