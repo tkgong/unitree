@@ -9,12 +9,15 @@
 // Latency 6 (the program's ring of 7 slots re-issues the group).
 // PRIV = 1: each block step has its own four alu_addp (the natural units); PRIV = 0: the 4 x NBK x 6 adds go out on
 // ea / eb and come back on ey (the shared unit lends them from a Monolith datapath).
+// EXT = 1: the six level registers are the PE's register vector (shared with the Monolith datapath): the group drives
+// an (the six levels' next values, level s at (s-1) * NBK*BL*64) and reads the registers on aq.
 module arx_group #(
     parameter int NBK  = 5,
     parameter int BL   = 22,
     parameter int CP   = 0,
     parameter int PRIV = 0,
-    parameter int NA   = 4 * NBK * 6
+    parameter int NA   = 4 * NBK * 6,
+    parameter int EXT  = 0
 ) (
     input  logic                 clk,
     input  logic [NBK*BL*64-1:0] x,
@@ -23,7 +26,9 @@ module arx_group #(
     output logic [NBK*BL*64-1:0] y,
     output logic [NA*32-1:0]     ea,
     output logic [NA*32-1:0]     eb,
-    input  logic [NA*32-1:0]     ey
+    input  logic [NA*32-1:0]     ey,
+    output logic [6*NBK*BL*64-1:0] an,
+    input  logic [6*NBK*BL*64-1:0] aq
 );
     function automatic bit wmask(input int s, input int l);   // lanes step s writes
         case (s)
@@ -97,9 +102,15 @@ module arx_group #(
                     end
                 end
             end
-            logic [NBK*BL*64-1:0] q;
-            always_ff @(posedge clk) q <= nxt;
-            assign R[s] = q;
+            if (EXT) begin : g_ext
+                assign an[(s - 1)*NBK*BL*64 +: NBK*BL*64] = nxt;
+                assign R[s] = aq[(s - 1)*NBK*BL*64 +: NBK*BL*64];
+            end else begin : g_reg
+                logic [NBK*BL*64-1:0] q;
+                always_ff @(posedge clk) q <= nxt;
+                assign R[s] = q;
+                assign an[(s - 1)*NBK*BL*64 +: NBK*BL*64] = '0;
+            end
         end
     endgenerate
     assign y = R[6];
