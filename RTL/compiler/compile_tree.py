@@ -17,6 +17,10 @@ usage: compile_tree.py <dll> merkle blake3|mono <log2 leaves> [deep|fifo] [xT]  
 trace=<file>: the closed-loop trace of the RTL testbench (RTL/test/tb_unit18.cpp, RTL/test/make_traces.sh).
 deep = DFS (deepest ready node first, across all trees), fifo = BFS (level order across all trees). The top TOPL levels of
 every tree (their results) are accounted as on-chip (SRAM) residents, the lower levels as HBM traffic.
+Memory policy (policy=auto, the default; memsim/results/policy18.md): the compiler picks the stored levels (store=k<K>)
+and the subtree size (tile=) from the program's pipeline and the memory: K = the fewest unstored levels whose traffic fits
+the DRAM at the compute bound (+1 for Merkle); Merkle TK = max(read window, pipeline width) within the SRAM; GGM TK = the
+largest whose open subtrees (theta TK L / (2^TK - 1) of 2^TK + 1 slots) and reserve fit. store= / tile= override it.
 Memory model (one tree): sram=<KB> [bw=<B/cycle>] [store=all|out]. The on-chip SRAM has a fixed size: every 32-byte
 value (leaf, seed, node result) on chip takes one slot and the model never exceeds the capacity. The tree is cut into
 subtrees (tiles) of 2^TK leaves, TK from the SRAM size (two tiles = half the SRAM); tiles run in order, nodes of the lowest
@@ -44,7 +48,7 @@ A read reserves its SRAM slot when it is sent and is on chip when the HBM return
 controller accepts it. hmap=RoBaRaCoCh|ChRaBaRoCo (address mapping), hport=<n> accesses sent per cycle (default = channels),
 hlay=block|level|tile (where stored nodes go). With open=, each layout's open batch is also timed on the HBM2 model.
 """
-import ctypes, heapq, os, random, sys
+import ctypes, heapq, math, os, random, sys
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")          # the repository (models.py exports HERE and ROOT of its own)
 VER = os.path.join(REPO, "dse", "TOP", "verify")                                   # models.py (the Python references), the unit models
 sys.path.insert(0, VER)
@@ -294,7 +298,42 @@ if MEMSIM:
         trc = [(int(l[0]), int(l[1]), int(l[2])) for l in (ln.split() for ln in open(fn))]
         BG = [[deque(trc), 0, (k + 1) << 26] for k in range(int(nb))]                 # queue, cycles behind the recorded pace, address offset 64 MB x k
     BGTAG = 1 << 40                                                                   # tags of the other cores' reads
-    STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), "all")
+    # ---- adaptive memory policy (policy=auto, the default; memsim/results/policy18.md): the stored levels K and the
+    # subtree size TK from the pipeline (throughput theta, node latency L, nodes in flight W), the DRAM (usable rate R,
+    # row-hit round trip) and the SRAM, per primitive and tree direction. An explicit store= / tile= overrides it.
+    POLICY = next((a[7:] for a in sys.argv[5:] if a.startswith("policy=")), "auto")
+    if prim in (1, 2):
+        P_L = max(sum(GD[g] + 1 for g in sp) for sp in CH) * NISS[prim]
+        P_TH = sum(len(GBLK[sp[0]]) for sp in CH) / NISS[prim]
+        P_W = sum(len(GBLK[sp[0]]) * sum(GD[g] + 1 for g in sp) for sp in CH)
+    else:
+        P_L, P_TH, P_W = KM * NISS[4], len(BASES) / NISS[4], 2 * MSLOTS
+    P_R = BW * (0.786 if HBMSIM else 1.0)                                            # usable rate: 78.6% of the DRAM peak (measured, 2 GDDR6 channels)
+    P_RT = 29                                                                         # row-hit round trip, cycles (nRCDRD + nCL)
+    P_CAP = int(SRAM_KB * 1024) // 32
+    P_C = ((1 << SZ) - 1) / P_TH                                                      # compute bound, cycles
+    def p_traffic(K):                                                                 # bytes: Merkle reads the leaves + writes the stored nodes;
+        return 32 * ((1 << SZ) + (1 << (SZ - K)) - (1 if REQ == "merkle" else 2))     # GGM writes the leaves + the stored seeds
+    P_K = next((K for K in range(SZ) if p_traffic(K) / P_R <= P_C), SZ - 1)           # the fewest unstored levels that fit the bandwidth
+    if REQ == "merkle" and P_K > 0: P_K += 1                                          # Merkle mixes reads and writes: one level of margin
+    if REQ == "merkle":                                                               # read window (Little, M/M/1 queueing) | pipeline width | SRAM
+        rho = 32 * P_TH / P_R
+        tk_win = math.ceil(math.log2(P_TH * P_RT / (1 - rho))) - 1 if rho < 1 else SZ
+        tk_cap = max(1, (P_CAP - P_W).bit_length() - 2)                              # 2^(TK+1) + W <= CAP
+        P_TK = max(1, min(max(tk_win, math.ceil(math.log2(P_W))), tk_cap))
+    else:                                                                             # GGM: N = theta TK L / (2^TK - 1) open subtrees of 2^TK + 1
+        stage = P_CAP // 4 if P_K > 0 else P_CAP // 2                                 # slots, the deadlock reserve, and the rows staged for the
+        P_TK = 2                                                                      # write; 0.8: headroom for the stack above the subtrees
+        for tk in range(2, SZ):
+            n_open = P_TH * tk * P_L / ((1 << tk) - 1)
+            res = 2 * (1 << tk) + 64 + (SZ - tk) + 8
+            if n_open * ((1 << tk) + 1) + res <= 0.8 * (P_CAP - stage): P_TK = tk
+    AUTO = POLICY == "auto" and not OPENREQ
+    STORE = next((a[6:] for a in sys.argv[5:] if a.startswith("store=")), ("all" if P_K == 0 else f"k{P_K}") if AUTO else "all")
+    TILE_ARG = next((a[5:] for a in sys.argv[5:] if a.startswith("tile=")), None)
+    if AUTO:
+        print(f"  policy auto: theta {P_TH:.3f} nodes/cycle, L {P_L}, W {P_W}, DRAM {P_R:.1f} B/cycle, SRAM {P_CAP} slots -> "
+              f"store={STORE}, tile={TILE_ARG or P_TK}" + (" (given)" if TILE_ARG else ""))
     if OPENREQ: STORE = "out"                                                         # the open writes the proof (pw) and the recomputed root only
     KSK = int(STORE[1:]) if STORE.startswith("k") else (0 if STORE == "all" else 1 << 30)   # levels (above the leaves) not stored
     def stored(l):                                                                    # is level l (0 = leaves) written to HBM
@@ -305,7 +344,7 @@ if MEMSIM:
     RTOP = int(next((a[3:] for a in sys.argv[5:] if a.startswith("top") and a[3:].isdigit()), "0"))   # levels kept resident (never freed) for the open
     def resident(x): return RTOP > 0 and lam(x) > SZ - RTOP
     if REQ == "merkle":                                                               # Merkle: tile = 2^TK leaves, two leaf tiles (double buffer) in half the SRAM
-        TK = max(1, min(SZ, int(next((a[5:] for a in sys.argv[5:] if a.startswith("tile=")), str((CAP // 4).bit_length() - 1))))); WT = 2
+        TK = max(1, min(SZ, int(TILE_ARG or (P_TK if AUTO else (CAP // 4).bit_length() - 1)))); WT = 2
     WIN = int(next((a[4:] for a in sys.argv[5:] if a.startswith("win=")), str((1 << 20) if OPENREQ else 1)))   # Merkle reads run WIN tiles ahead of the current one
     # (1 = the double buffer; the open's inputs are sparse and consumed in path order, so only the SRAM limits its reads)
     GSCHED = next((a[7:] for a in sys.argv[5:] if a.startswith("gsched=")), "dfs")
@@ -317,7 +356,7 @@ if MEMSIM:
     if REQ == "merkle": pass
     elif GSCHED == "dfs":                                                             # GGM cut by the SRAM: WT tiles of 2^TK leaves in half the SRAM, in DFS order
         WT = int(next((a[3:] for a in sys.argv[5:] if a.startswith("wt=")), "2"))
-        TK = max(1, min(SZ, int(next((a[5:] for a in sys.argv[5:] if a.startswith("tile=")), "4" if GATE == "res" else str((CAP // (2 * WT)).bit_length() - 1)))))
+        TK = max(1, min(SZ, int(TILE_ARG or (P_TK if AUTO else 4 if GATE == "res" else (CAP // (2 * WT)).bit_length() - 1))))
         LAFIX = AHEAD                                                                 # 0: derived per stack node (la below)
     else:                                                                             # GGM (gsched=adm): tiles of 2^TK leaves (a contiguous write burst), WT tiles open at once;
         TK = max(1, min(SZ, int(next((a[5:] for a in sys.argv[5:] if a.startswith("tile=")), "6")), (CAP // 8).bit_length() - 1))
