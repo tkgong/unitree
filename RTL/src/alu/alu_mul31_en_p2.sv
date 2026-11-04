@@ -1,12 +1,17 @@
 // alu_mul31_en_p2.sv - 31 x 31 -> 62 multiplier, Dadda tree in two pipeline stages (latency 2, II = 1). The tree was emitted
 // once by a script (gen_mul31_p2.py, removed 2026-10-28; in git history); this file is now the maintained source.
 // stage 1: partial products + reduction to 4 rows (registered); stage 2: reduction to 2 rows + 62-bit add ; y = 0 when en = 0
-module alu_mul31_en_p2 (
+// EXT = 1: the output register is outside (the shared unit's PE vector): yd = its next value, y = yq.
+module alu_mul31_en_p2 #(
+    parameter int EXT = 0
+) (
     input  logic        clk,
     input  logic        en,
     input  logic [30:0] a,
     input  logic [30:0] b,
-    output logic [61:0] y
+    output logic [61:0] y,
+    output logic [61:0] yd,
+    input  logic [61:0] yq
 );
     logic [30:0] pp [0:30];
     generate for (genvar i = 0; i < 31; i++) begin : g_pp
@@ -1481,5 +1486,12 @@ module alu_mul31_en_p2 (
     assign row0[61] = 1'b0;
     assign row1[61] = 1'b0;
     logic [61:0] sum; assign sum = row0 + row1;
-    always_ff @(posedge clk) y <= en_q ? sum : 62'd0;
+    assign yd = en_q ? sum : 62'd0;
+    generate
+        if (EXT) begin : g_ext
+            assign y = yq;
+        end else begin : g_reg
+            always_ff @(posedge clk) y <= yd;
+        end
+    endgenerate
 endmodule
