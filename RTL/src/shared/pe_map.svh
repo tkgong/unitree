@@ -40,59 +40,62 @@
     localparam int U_OUT = U_KC + 16;
     localparam int NU    = U_OUT + 16;                        // free lanes used
 
-    function automatic integer excl(input integer lv, input integer lane);    // a sum lane or a dead lane
+    // The excluded lanes (sum lanes, dead lanes) per level: 1, 4: 16 17 | 2: 0 4 16 17 | 3: 2 6 16 17 | 5: 0 4 | 6: 2 6.
+    // Closed forms, no loops (Yosys evaluates constant functions slowly).
+    function automatic integer nfree(input integer lv);       // free lanes of one block at level lv
+        begin
+            nfree = (lv == 2 || lv == 3) ? 18 : 20;
+        end
+    endfunction
+    function automatic integer nbelow(input integer lv);      // free lanes of one block at the levels below lv
         begin
             case (lv)
-                1, 4:    excl = (lane == 16 || lane == 17);
-                2:       excl = (lane == 0 || lane == 4 || lane == 16 || lane == 17);
-                3:       excl = (lane == 2 || lane == 6 || lane == 16 || lane == 17);
-                5:       excl = (lane == 0 || lane == 4);
-                default: excl = (lane == 2 || lane == 6);
+                1: nbelow = 0;   2: nbelow = 20;  3: nbelow = 38;
+                4: nbelow = 56;  5: nbelow = 76;  6: nbelow = 96;
+                default: nbelow = 116;
             endcase
         end
     endfunction
-    function automatic integer nfree(input integer lv);       // free lanes of one block at level lv
-        integer l;
+    function automatic integer fidx(input integer lv, input integer l);       // free index of lane l (-1: excluded)
         begin
-            nfree = 0;
-            for (l = 0; l < 22; l = l + 1) nfree = nfree + (excl(lv, l) ? 0 : 1);
+            case (lv)
+                1, 4: fidx = (l < 16) ? l : (l < 18) ? -1 : l - 2;
+                2:    fidx = (l == 0 || l == 4 || l == 16 || l == 17) ? -1 : (l < 4) ? l - 1 : (l < 16) ? l - 2 : l - 4;
+                3:    fidx = (l == 2 || l == 6 || l == 16 || l == 17) ? -1 : (l < 2) ? l : (l < 6) ? l - 1 : (l < 16) ? l - 2 : l - 4;
+                5:    fidx = (l == 0 || l == 4) ? -1 : (l < 4) ? l - 1 : l - 2;
+                default: fidx = (l == 2 || l == 6) ? -1 : (l < 2) ? l : (l < 6) ? l - 1 : l - 2;
+            endcase
+        end
+    endfunction
+    function automatic integer flane(input integer lv, input integer k);      // lane of free index k
+        begin
+            case (lv)
+                1, 4: flane = (k < 16) ? k : k + 2;
+                2:    flane = (k < 3) ? k + 1 : (k < 14) ? k + 2 : k + 4;
+                3:    flane = (k < 2) ? k : (k < 5) ? k + 1 : (k < 14) ? k + 2 : k + 4;
+                5:    flane = (k < 3) ? k + 1 : k + 2;
+                default: flane = (k < 2) ? k : (k < 5) ? k + 1 : k + 2;
+            endcase
         end
     endfunction
     function automatic integer lane_pos(input integer u);    // first bit of free lane u in the PE vector
-        integer g, nb, base, r, lv, k, l;
+        integer g, nb, r, lv, rr;
         begin
-            lane_pos = -1;
-            r = u;
-            base = 0;
-            for (g = 0; g < 2; g = g + 1) begin
-                nb = (g == 0) ? 5 : 4;
-                for (lv = 1; lv <= 6; lv = lv + 1) begin
-                    if (lane_pos < 0 && r < nb * nfree(lv)) begin
-                        k = r % nfree(lv);
-                        for (l = 0; l < 22; l = l + 1) begin
-                            if (!excl(lv, l)) begin
-                                if (k == 0 && lane_pos < 0) lane_pos = base + (lv - 1) * nb * PM_LW + (r / nfree(lv)) * PM_LW + l * 64;
-                                k = k - 1;
-                            end
-                        end
-                    end else if (lane_pos < 0) r = r - nb * nfree(lv);
-                end
-                base = base + 6 * nb * PM_LW;
-            end
+            g  = (u < 5 * 116) ? 0 : 1;
+            nb = (g == 0) ? 5 : 4;
+            r  = (g == 0) ? u : u - 5 * 116;
+            lv = (r < nb * 20) ? 1 : (r < nb * 38) ? 2 : (r < nb * 56) ? 3 : (r < nb * 76) ? 4 : (r < nb * 96) ? 5 : 6;
+            rr = r - nb * nbelow(lv);
+            lane_pos = g * 6 * 5 * PM_LW + (lv - 1) * nb * PM_LW + ((rr / nfree(lv)) * 22 + flane(lv, rr % nfree(lv))) * 64;
         end
     endfunction
     function automatic integer lane_u(input integer g, input integer lv, input integer b, input integer l);  // inverse:
-        integer nb, k, j;                                      // the free lane u of group g, level lv, block b, lane l
+        integer nb, k;                                         // the free lane u of group g, level lv, block b, lane l
         begin                                                  // (-1: a sum / dead lane, or no register on it)
             nb = (g == 0) ? 5 : 4;
-            if (excl(lv, l)) lane_u = -1;
-            else begin
-                lane_u = (g == 0) ? 0 : 5 * (nfree(1) + nfree(2) + nfree(3) + nfree(4) + nfree(5) + nfree(6));
-                for (k = 1; k < lv; k = k + 1) lane_u = lane_u + nb * nfree(k);
-                lane_u = lane_u + b * nfree(lv);
-                for (j = 0; j < l; j = j + 1) lane_u = lane_u + (excl(lv, j) ? 0 : 1);
-                if (lane_u >= NU) lane_u = -1;
-            end
+            k  = fidx(lv, l);
+            lane_u = (k < 0) ? -1 : g * 5 * 116 + nb * nbelow(lv) + b * nfree(lv) + k;
+            if (lane_u >= NU) lane_u = -1;
         end
     endfunction
     function automatic integer twin_pos(input integer ld, input integer cp);  // first bit of lent sum ld's lane word
