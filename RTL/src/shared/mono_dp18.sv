@@ -139,12 +139,18 @@ module mono_dp18 #(
             if (PB > 0) begin : g_sqx                        // the square's registers in the PE vector: stage 1 (level 2,
                 logic [61:0]  sqd, sqq;                      // four slots) and the output (level 3)
                 logic [232:0] s1d, s1q;
+                logic [223:0] s1c, s1cq;                     // a = b (a square): 7 first-stage bits repeat others, 2 are 0
                 alu_mul31_en_p2 #(.EXT(1)) u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq),
                     .yd(sqd), .yq(sqq), .s1d(s1d), .s1q(s1q));
+                assign s1c = {s1d[232:231], s1d[229:228], s1d[226:225], s1d[222:212], s1d[210:200], s1d[198:11], s1d[10:8],
+                              s1d[6:5], s1d[3:2], s1d[0]};
+                assign s1q = {s1cq[223:222], s1cq[222:221], s1cq[220], s1cq[221], s1cq[219:218], s1cq[218], s1cq[219],
+                              s1cq[217:207], 1'b0, s1cq[206:196], 1'b0, s1cq[195:5], s1cq[7], s1cq[4:3], s1cq[4], s1cq[2:1],
+                              s1cq[1:0]};
                 `MREG(V_SQ + i - 1, 62, 3, i, sqd, sqq)
                 for (genvar j = 0; j < 4; j++) begin : g_s1
-                    localparam int SW = (j < 3) ? 64 : 233 - 3 * 64;
-                    `MREG(V_S1 + 4 * (i - 1) + j, SW, 2, i, s1d[j*64 +: SW], s1q[j*64 +: SW])
+                    localparam int SW = (j < 3) ? 64 : 224 - 3 * 64;
+                    `MREG(V_S1 + 4 * (i - 1) + j, SW, 2, i, s1c[j*64 +: SW], s1cq[j*64 +: SW])
                 end
             end else begin : g_sq
                 alu_mul31_en_p2 u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq));

@@ -9,8 +9,9 @@
 //    the head at level 1 (selected), the delays at levels 2, 3 (the ARX pass: the same value, no select). Chains: the
 //    private adders with delays (q, d1[, d2]), the leaves with delays (q1, q2, q3), xb1 -> xb2 -> xb3 (3 levels at most).
 //    10 chain columns per block.
-//  * a lent sum's delays: the ARX steps after the sum's step only move its word (lfree / ldpos: step 1, 4 sums two delays,
-//    step 2, 3, 5 sums one), so a delay is that lane word (no select); the bits above 31 stay registers of the datapath.
+//  * a lent sum's delays: where the ARX steps after the sum's step only move its word into a register the ARX reads
+//    (lfree / ldpos: step 4 sums two delays, step 2, 3, 5 sums one), a delay is that lane word (no select); the bits above
+//    31 stay registers of the datapath.
 //  * every other register is selected on a generic lane: a lane whose ARX value in no program is an XOR of a sum of the
 //    same step (the select sits after an ARX path without the add -> XOR depth: timing), no sum lane, no lane holding a
 //    lent delay, no chain cell:
@@ -39,7 +40,7 @@
                 lent = t[13:5] < 216;
                 ld   = t[13:5];
                 s    = (ld < 120) ? ld / 20 + 1 : (ld - 120) / 16 + 1;
-                free = (k == 1 && s != 6) || (k == 2 && (s == 1 || s == 4));   // = lfree(ld, k)
+                free = (k == 1 && s != 1 && s != 6) || (k == 2 && s == 4);    // = lfree(ld, k)
                 case (sel)
                     0: hit = add && !lent && t[4:0] == 0;
                     1: hit = add && !lent && t[4:0] >= 1;
@@ -180,12 +181,14 @@
             twin_pos = gbase + (s - 1) * nb * PM_LW + (b * 22 + lane) * 64 + half * 32;
         end
     endfunction
-    // delay k of lent sum ld is free when the next ARX steps only move the sum's word (the step ld's sum is in: 1..6)
+    // delay k of lent sum ld is free when the next ARX steps only move the sum's word into a register the ARX reads (the
+    // step ld's sum is in: 1..6). Step 1 sums move into levels 2, 3 lanes 16 / 17, which no ARX program reads (synthesis
+    // removes them in the ARX unit): a flip-flop kept for the Monolith only costs more than a select, so they take slots.
     function automatic integer lfree(input integer ld, input integer k);
         integer s;
         begin
             s     = (ld < 120) ? ld / 20 + 1 : (ld - 120) / 16 + 1;
-            lfree = ((k == 1 && s != 6) || (k == 2 && (s == 1 || s == 4))) ? 1 : 0;
+            lfree = ((k == 1 && s != 1 && s != 6) || (k == 2 && s == 4)) ? 1 : 0;
         end
     endfunction
     // the lane word holding delay k of lent sum ld (lfree(ld, k)): steps 1, 4 -> lanes 16 / 17 pass two steps; step 2 ->
