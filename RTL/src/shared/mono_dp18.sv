@@ -195,7 +195,7 @@ module mono_dp18 #(
                 end
                 assign v[id*VW +: VW] = {10'd0, NA ? ~lf : lf};
                 if (LIFE >= 1) begin : g_d1                  // an odd leaf of a tree is summed a level later
-                    localparam int CI = C_LF + cnt(id, 2, 0);   // q1 -> q2 -> q3: a chain
+                    localparam int CI = C_LF + R_LF[id*10 +: 10];   // q1 -> q2 -> q3: a chain
                     logic [30:0] q1, q2, q3;
                     `MHEAD(CI, 31, LV + 1, id, NA ? ~lf : lf, q1)
                     `MFOL(CI, 1, 31, q1, q2)
@@ -273,28 +273,28 @@ module mono_dp18 #(
                         assign q[W-1:32] = qh;
                     end
                 end else if (LIFE >= 1) begin : g_qc         // a private adder with delays: the head of a chain
-                    `MHEAD(cnt(id, 1, 0), W, LV, id, s, q)
+                    `MHEAD(R_PA[id*10 +: 10], W, LV, id, s, q)
                 end else begin : g_q                         // a private adder without delays: a generic slot
-                    `MREG(cnt(id, 0, 0), W, LV, id, s, q)
+                    `MREG(R_PN[id*10 +: 10], W, LV, id, s, q)
                 end
                 assign v[id*VW +: VW] = {{(VW - W){1'b0}}, q};
                 if (LIFE >= 1) begin : g_d1
                     logic [W-1:0] q1, q2, q3;
                     if (LD < NL) begin : g_ld                // a lent sum's delays: generic slots
-                        `MREG(V_LD1 + cnt(id, 3, 1), W, LV + 1, id, q, q1)
+                        `MREG(V_LD1 + R_LD1[id*10 +: 10], W, LV + 1, id, q, q1)
                         if (LIFE >= 2) begin : g_2
-                            `MREG(V_LD2 + cnt(id, 3, 2), W, LV + 2, id, q1, q2)
+                            `MREG(V_LD2 + R_LD2[id*10 +: 10], W, LV + 2, id, q1, q2)
                         end
                         if (LIFE >= 3) begin : g_3
-                            `MREG(V_LD3 + cnt(id, 3, 3), W, LV + 3, id, q2, q3)
+                            `MREG(V_LD3 + R_LD3[id*10 +: 10], W, LV + 3, id, q2, q3)
                         end
                     end else begin : g_pd                    // a private adder's delays: the ARX pass of its chain
-                        `MFOL(cnt(id, 1, 0), 1, W, q, q1)
+                        `MFOL(R_PA[id*10 +: 10], 1, W, q, q1)
                         if (LIFE >= 2) begin : g_2
-                            `MFOL(cnt(id, 1, 0), 2, W, q1, q2)
+                            `MFOL(R_PA[id*10 +: 10], 2, W, q1, q2)
                         end
                         if (LIFE >= 3) begin : g_3
-                            `MFOL(cnt(id, 1, 0), 3, W, q2, q3)
+                            `MFOL(R_PA[id*10 +: 10], 3, W, q2, q3)
                         end
                     end
                     assign vd1[id*VW +: VW] = {{(VW - W){1'b0}}, q1};

@@ -15,33 +15,44 @@
     localparam int PM_NN = kara_pkg::NN;
     localparam int PM_LW = 22 * 64;                           // bits of one block at one level
 
-    // how many nodes before id are of kind sel (one table slice per node; Yosys evaluates constant functions slowly):
+    // ranks(sel, k)[id*10 +: 10]: how many nodes before id are of kind sel (entry PM_NN: all of them); one pass over the
+    // table per kind (Yosys evaluates constant functions slowly):
     //   0 private adder without delay | 1 private adder with delays | 2 leaf with delays | 3 lent adder with a k-th delay
-    function automatic integer cnt(input integer id, input integer sel, input integer k);
-        integer j;
+    function automatic [(PM_NN+1)*10-1:0] ranks(input integer sel, input integer k);
+        integer j, n;
         reg [49:0] t;
-        reg add, lent;
+        reg add, lent, hit;
         begin
-            cnt = 0;
-            for (j = 0; j < id; j = j + 1) begin
+            n = 0;
+            ranks = '0;
+            for (j = 0; j < PM_NN; j = j + 1) begin
+                ranks[j*10 +: 10] = n;
                 t = kara_pkg::NODE_TAB[j*50 +: 50];
                 add  = t[46:42] != 0 && t[49:47] != 2 && t[49:47] != 5;
                 lent = t[13:5] < 216;
                 case (sel)
-                    0: cnt = cnt + (add && !lent && t[4:0] == 0);
-                    1: cnt = cnt + (add && !lent && t[4:0] >= 1);
-                    2: cnt = cnt + (t[46:42] != 0 && t[49:47] == 2 && t[4:0] >= 1);
-                    default: cnt = cnt + (add && lent && t[4:0] >= k);
+                    0: hit = add && !lent && t[4:0] == 0;
+                    1: hit = add && !lent && t[4:0] >= 1;
+                    2: hit = t[46:42] != 0 && t[49:47] == 2 && t[4:0] >= 1;
+                    default: hit = add && lent && t[4:0] >= k;
                 endcase
+                if (hit) n = n + 1;
             end
+            ranks[PM_NN*10 +: 10] = n;
         end
     endfunction
-    localparam int NPN  = cnt(PM_NN, 0, 0);
-    localparam int NPA  = cnt(PM_NN, 1, 0);
-    localparam int NLF  = cnt(PM_NN, 2, 0);
-    localparam int NLD1 = cnt(PM_NN, 3, 1);
-    localparam int NLD2 = cnt(PM_NN, 3, 2);
-    localparam int NLD3 = cnt(PM_NN, 3, 3);
+    localparam logic [(PM_NN+1)*10-1:0] R_PN  = ranks(0, 0);
+    localparam logic [(PM_NN+1)*10-1:0] R_PA  = ranks(1, 0);
+    localparam logic [(PM_NN+1)*10-1:0] R_LF  = ranks(2, 0);
+    localparam logic [(PM_NN+1)*10-1:0] R_LD1 = ranks(3, 1);
+    localparam logic [(PM_NN+1)*10-1:0] R_LD2 = ranks(3, 2);
+    localparam logic [(PM_NN+1)*10-1:0] R_LD3 = ranks(3, 3);
+    localparam int NPN  = R_PN[PM_NN*10 +: 10];
+    localparam int NPA  = R_PA[PM_NN*10 +: 10];
+    localparam int NLF  = R_LF[PM_NN*10 +: 10];
+    localparam int NLD1 = R_LD1[PM_NN*10 +: 10];
+    localparam int NLD2 = R_LD2[PM_NN*10 +: 10];
+    localparam int NLD3 = R_LD3[PM_NN*10 +: 10];
     localparam int V_LD1 = NPN;                               // generic slots
     localparam int V_LD2 = V_LD1 + NLD1;
     localparam int V_LD3 = V_LD2 + NLD2;
