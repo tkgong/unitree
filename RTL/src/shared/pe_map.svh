@@ -15,30 +15,17 @@
     localparam int PM_NN = kara_pkg::NN;
     localparam int PM_LW = 22 * 64;                           // bits of one block at one level
 
-    function automatic integer fld(input integer id, input integer hi, input integer lo);
+    // delay-k registers of the nodes before id (a leaf with a life has all three); one table slice per node, no nested
+    // calls: Yosys evaluates constant functions slowly
+    function automatic integer rank_dly(input integer id, input integer k);
+        integer j;
         reg [49:0] t;
         begin
-            t = kara_pkg::NODE_TAB[id*50 +: 50];
-            fld = (t >> lo) & ((1 << (hi - lo + 1)) - 1);
-        end
-    endfunction
-    function automatic integer is_add(input integer id);      // bank / pre / tree / post adder
-        begin
-            is_add = fld(id, 46, 42) != 0 && fld(id, 49, 47) != 2 && fld(id, 49, 47) != 5;
-        end
-    endfunction
-    function automatic integer has_dly(input integer id, input integer k);   // node id has a k-th delay register
-        begin
-            if (fld(id, 46, 42) == 0 || fld(id, 49, 47) == 5) has_dly = 0;
-            else if (fld(id, 49, 47) == 2) has_dly = fld(id, 4, 0) >= 1;     // a leaf with a life has all three
-            else has_dly = fld(id, 4, 0) >= k;
-        end
-    endfunction
-    function automatic integer rank_dly(input integer id, input integer k);  // delay-k registers of the nodes before id
-        integer j;
-        begin
             rank_dly = 0;
-            for (j = 0; j < id; j = j + 1) rank_dly = rank_dly + has_dly(j, k);
+            for (j = 0; j < id; j = j + 1) begin
+                t = kara_pkg::NODE_TAB[j*50 +: 50];
+                if (t[46:42] != 0 && t[49:47] != 5 && (t[49:47] == 2 ? t[4:0] >= 1 : t[4:0] >= k)) rank_dly = rank_dly + 1;
+            end
         end
     endfunction
     localparam int N1 = rank_dly(PM_NN, 1);
