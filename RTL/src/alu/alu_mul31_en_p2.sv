@@ -3,6 +3,7 @@
 // stage 1: partial products + reduction to 4 rows (registered); stage 2: reduction to 2 rows + 62-bit add ; y = 0 when en = 0
 // EXT = 1: the stage-1 register (233 bits, s1) and the output register are outside (the shared unit's PE vector): s1d / yd
 // are their next values, s1q / yq the registered values. The enable stays a register of the multiplier.
+// EXT = 2: single stage (latency 1 from a, b; the enable keeps its register: en one level before a, b), output outside.
 module alu_mul31_en_p2 #(
     parameter int EXT = 0
 ) (
@@ -1061,7 +1062,9 @@ module alu_mul31_en_p2 #(
         q_59_0, q_59_1,
         q_60_0} = s1r;
     generate
-        if (EXT) begin : g_s1x
+        if (EXT == 2) begin : g_s1c                          // single stage: no stage-1 register (a, b one level later)
+            assign s1r = s1d;
+        end else if (EXT) begin : g_s1x
             assign s1r = s1q;
         end else begin : g_s1
             always_ff @(posedge clk) s1r <= s1d;
