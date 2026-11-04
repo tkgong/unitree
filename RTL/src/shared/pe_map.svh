@@ -11,7 +11,8 @@
 //  * every other register is selected on a generic lane: lanes 0..7, 16, 17 that are no sum lane and not dead (levels 2, 3
 //    lanes 16, 17: written, never read). Generic lanes per block and level: 8 6 6 8 8 8.
 //      generic slots: private adders without delays | delays of the lent adders (d1, then d2, then d3) | the 41 reductions |
-//      br (16) | the 16 K constants | the 16 outputs | the 15 squarer outputs; then the chain heads.
+//      br (16) | the 16 K constants | the 16 outputs | the 15 squarer outputs | the 15 squarer first stages (4 slots
+//      each); then the chain heads.
     localparam int PM_NN = kara_pkg::NN;
     localparam int PM_LW = 22 * 64;                           // bits of one block at one level
 
@@ -60,8 +61,9 @@
     localparam int V_BR  = V_RQ + 41;
     localparam int V_KC  = V_BR + 16;
     localparam int V_OUT = V_KC + 16;
-    localparam int V_SQ  = V_OUT + 16;                        // squarer i = 1..15 at V_SQ + i - 1
-    localparam int NV    = V_SQ + 15;
+    localparam int V_SQ  = V_OUT + 16;                        // squarer i = 1..15: output at V_SQ + i - 1,
+    localparam int V_S1  = V_SQ + 15;                         // first stage (233 bits) at V_S1 + 4 (i - 1) + 0..3
+    localparam int NV    = V_S1 + 60;
     localparam int C_LF  = NPA;                               // chains
     localparam int C_XB  = C_LF + NLF;
     localparam int NC    = C_XB + 16;

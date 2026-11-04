@@ -52,8 +52,10 @@ module mono_dp18 #(
     if (PB > 0) begin \
         assign mn[(S)*64 +: (W)] = (DIN); \
         assign ms[(S)*64 +: (W)] = {(W){lsel[(C) % NMC][(LV)]}}; \
-        assign mn[(S)*64 + (W) +: 64 - (W)] = '0; \
-        assign ms[(S)*64 + (W) +: 64 - (W)] = '0; \
+        if ((W) < 64) begin \
+            assign mn[(S)*64 + (W) +: 64 - (W)] = '0; \
+            assign ms[(S)*64 + (W) +: 64 - (W)] = '0; \
+        end \
         assign QOUT = mq[(POS) +: (W)]; \
     end else begin \
         always_ff @(posedge clk) QOUT <= (DIN); \
@@ -133,11 +135,16 @@ module mono_dp18 #(
         for (genvar i = 1; i < 16; i++) begin : g_brick
             logic [61:0] sq;
             logic [30:0] cs, cc, t;
-            if (PB > 0) begin : g_sqx                        // the square's output register in the PE vector (level 3)
-                logic [61:0] sqd, sqq;
+            if (PB > 0) begin : g_sqx                        // the square's registers in the PE vector: stage 1 (level 2,
+                logic [61:0]  sqd, sqq;                      // four slots) and the output (level 3)
+                logic [232:0] s1d, s1q;
                 alu_mul31_en_p2 #(.EXT(1)) u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq),
-                    .yd(sqd), .yq(sqq));
+                    .yd(sqd), .yq(sqq), .s1d(s1d), .s1q(s1q));
                 `MREG(V_SQ + i - 1, 62, 3, i, sqd, sqq)
+                for (genvar j = 0; j < 4; j++) begin : g_s1
+                    localparam int SW = (j < 3) ? 64 : 233 - 3 * 64;
+                    `MREG(V_S1 + 4 * (i - 1) + j, SW, 2, i, s1d[j*64 +: SW], s1q[j*64 +: SW])
+                end
             end else begin : g_sq
                 alu_mul31_en_p2 u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq));
             end
