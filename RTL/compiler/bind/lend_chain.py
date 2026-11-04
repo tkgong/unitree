@@ -80,6 +80,11 @@ for p, c in sorted(E0, key=lambda e: (N[e[0]]["W"] + N[e[1]]["W"], e)):
 NCOL = 9 * 4                                                # columns: (block, sum word)
 PAIRS = PAIRS[:2 * NCOL]
 lent = {i for pc in PAIRS for i in pc}
+E2 = [(p, c) for c in ADD for p in reads(c, 2)]             # delay-2 reads: step 3 -> step 6 of a column
+PAIRS2 = []
+for p, c in sorted(E2, key=lambda e: (N[e[0]]["W"] + N[e[1]]["W"], e)):
+    if p not in lent and c not in lent and max(N[p]["W"], N[c]["W"]) <= 33 and len(PAIRS2) < NCOL:
+        PAIRS2.append((p, c)); lent |= {p, c}
 for i in sorted(ADD, key=lambda i: (N[i]["W"], i)):
     if len(lent) >= 216: break
     lent.add(i)
@@ -100,10 +105,13 @@ for p, c in order:
     free_pairs.remove(best)
     (g, b, w), lo = best
     pos[p], pos[c] = ld_of(g, lo, b, w), ld_of(g, lo + 1, b, w)
+for k, (p, c) in enumerate(PAIRS2):                         # a delay-2 pair: step 3 and step 6 of column k
+    g, b, w = cols[k]
+    pos[p], pos[c] = ld_of(g, 3, b, w), ld_of(g, 6, b, w)
 rest = sorted(lent - set(pos), key=lambda i: (-N[i]["life"], i))
-slots = [ld_of(g, s, b, w) for s in (3,) for (g, b, w) in cols] + \
+slots = [ld_of(g, s, b, w) for s in (3,) for (g, b, w) in cols[len(PAIRS2):]] + \
         [ld_of(g, lo + k, b, w) for ((g, b, w), lo) in free_pairs for k in (0, 1)] + \
-        [ld_of(g, s, b, w) for s in (6,) for (g, b, w) in cols]
+        [ld_of(g, s, b, w) for s in (6,) for (g, b, w) in cols[len(PAIRS2):]]
 for i, ld in zip(rest, slots): pos[i] = ld
 assert len(pos) == 216 and len(set(pos.values())) == 216
 

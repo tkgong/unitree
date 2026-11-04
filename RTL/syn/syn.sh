@@ -14,6 +14,9 @@
 # KS45=1: the ARX / lent adders are the structural Nangate45 Kogge-Stone (alu_add_ks45.sv, `define KS45; the liberty cells
 # are read as blackboxes and kept). KEEPCTL=1: the replicated control registers (arx_group r0_q / r8_q / bk_q, mono_dp18
 # mpc) get the keep attribute on the $dff cells themselves, which is what stops opt_merge from merging the copies.
+# SDFF=1: after mapping, every MUX2_X1 whose output drives only the D pin of a DFF_X1 is merged with it into one SDFF_X1
+# (the scan flip-flop, Q <= SE ? SI : D; Yosys extract on mxff_pat.v, techmap mxff_map.v): 6.118 um^2 against 6.384.
+# report.py counts an SDFF_X1 as a flip-flop (4.522) plus its select (1.596, logic).
 #   sh syn.sh [top ...]    (shared mono chacha blake3)
 R=$(cd "$(dirname "$0")/.." && pwd); . "$R/env.sh"
 cd "$R/syn"
@@ -46,6 +49,10 @@ abc ${ABC_D:+-D $ABC_D} $ABCS -liberty $LIB
 opt_clean -purge
 $KA2
 opt_clean -purge
+${SDFF:+read_liberty -lib $LIB}
+${SDFF:+extract -map $R/syn/mxff_pat.v}
+${SDFF:+techmap -map $R/syn/mxff_map.v}
+${SDFF:+opt_clean -purge}
 tee -o $WK/${t}_$mode.txt stat -liberty $LIB
 EOF
     if [ -n "$NET" ] && [ $mode = flat ]; then echo "write_verilog -noattr $WK/${t}_flat.v" >> $WK/$t.$mode.ys; fi
