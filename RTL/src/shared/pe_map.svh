@@ -1,4 +1,5 @@
-// pe_map_pkg.sv - where the Monolith datapath's registers live in its PE's register vector (unit18_shared, mono_dp18 PB > 0).
+// pe_map.svh - where the Monolith datapath's registers live in its PE's register vector (unit18_shared, mono_dp18 PB > 0);
+// included in both modules (Yosys reads no package that refers to another package).
 // The PE vector = the level registers of the PE's two ARX block groups: group A (5 blocks) levels 1..6, then group B (4 blocks)
 // levels 1..6, each level NBK x 22 lanes x 64 bits.
 //  * A lent adder's sum: its register is the ARX lane word that holds the same sum (the same adder output, so no select).
@@ -11,10 +12,8 @@
 //    is not dead (levels 2, 3 lanes 16, 17: written, never read). Lanes in order of group, level, block, lane.
 //      u = node id (registers of the adders that are not lent) | NN + rank (first delays) | then the second delays, the
 //      third delays, the 41 reductions, xb1 / xb2 / xb3 / br (4 x 16), the 16 K constants, the 16 outputs.
-package pe_map_pkg;
-    localparam int NN = kara_pkg::NN;
-    localparam int NL = 216;                                  // lent adders per datapath
-    localparam int LW = 22 * 64;                              // bits of one block at one level
+    localparam int PM_NN = kara_pkg::NN;
+    localparam int PM_LW = 22 * 64;                           // bits of one block at one level
 
     function automatic integer fld(input integer id, input integer hi, input integer lo);
         reg [49:0] t;
@@ -42,10 +41,10 @@ package pe_map_pkg;
             for (j = 0; j < id; j = j + 1) rank_dly = rank_dly + has_dly(j, k);
         end
     endfunction
-    localparam int N1 = rank_dly(NN, 1);
-    localparam int N2 = rank_dly(NN, 2);
-    localparam int N3 = rank_dly(NN, 3);
-    localparam int U_D1  = NN;
+    localparam int N1 = rank_dly(PM_NN, 1);
+    localparam int N2 = rank_dly(PM_NN, 2);
+    localparam int N3 = rank_dly(PM_NN, 3);
+    localparam int U_D1  = PM_NN;
     localparam int U_D2  = U_D1 + N1;
     localparam int U_D3  = U_D2 + N2;
     localparam int U_RQ  = U_D3 + N3;
@@ -85,13 +84,13 @@ package pe_map_pkg;
                         k = r % nfree(lv);
                         for (l = 0; l < 22; l = l + 1) begin
                             if (!excl(lv, l)) begin
-                                if (k == 0 && lane_pos < 0) lane_pos = base + (lv - 1) * nb * LW + (r / nfree(lv)) * LW + l * 64;
+                                if (k == 0 && lane_pos < 0) lane_pos = base + (lv - 1) * nb * PM_LW + (r / nfree(lv)) * PM_LW + l * 64;
                                 k = k - 1;
                             end
                         end
                     end else if (lane_pos < 0) r = r - nb * nfree(lv);
                 end
-                base = base + 6 * nb * LW;
+                base = base + 6 * nb * PM_LW;
             end
         end
     endfunction
@@ -113,7 +112,7 @@ package pe_map_pkg;
         integer nb, gbase, q, s, b, w, lane, half;
         begin
             nb    = (ld < 120) ? 5 : 4;
-            gbase = (ld < 120) ? 0 : 6 * 5 * LW;
+            gbase = (ld < 120) ? 0 : 6 * 5 * PM_LW;
             q     = (ld < 120) ? ld : ld - 120;
             s     = q / (4 * nb) + 1;
             b     = (q / 4) % nb;
@@ -122,7 +121,6 @@ package pe_map_pkg;
             lane  = (s == 1 || s == 4) ? 16 : (s == 2 || s == 5) ? 0 : 2;
             if (w >= 2) lane = lane + ((s == 1 || s == 4) ? 1 : 4);
             half  = w % 2;
-            twin_pos = gbase + (s - 1) * nb * LW + (b * 22 + lane) * 64 + half * 32;
+            twin_pos = gbase + (s - 1) * nb * PM_LW + (b * 22 + lane) * 64 + half * 32;
         end
     endfunction
-endpackage

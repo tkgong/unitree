@@ -13,10 +13,10 @@
 // fused add + fold), the K constants are selected a level early and registered, the issue bit is replicated per MPR
 // lent adders (the fanout of the lend select).
 // PB > 0: the value registers live in the PE's register vector (PB bits: the ARX block groups' level registers; the map is
-// pe_map_pkg). A lent adder's sum register is the ARX lane word that holds the same adder output (read on mq, nothing
+// pe_map.svh). A lent adder's sum register is the ARX lane word that holds the same adder output (read on mq, nothing
 // driven). Every other register has a free lane u: the datapath drives mn[u*64 +: W] (the value) and ms (1 while a
 // Monolith state enters that register's level: the state bit travelling with it), the PE registers ms ? mn : the ARX
-// value at pe_map_pkg::lane_pos(u), and the datapath reads it on mq. The issue bit / r copies (mpc, rr), the squarers'
+// value at lane_pos(u), and the datapath reads it on mq. The issue bit / r copies (mpc, rr), the squarers'
 // internal stage and the bits above 31 of the lent sums stay registers of the datapath. CP: the PE's block-group copy.
 module mono_dp18 #(
     parameter int NL  = 216,
@@ -24,7 +24,7 @@ module mono_dp18 #(
     parameter int PB  = 0,
     parameter int PBP = (PB > 0) ? PB : 1,
     parameter int CP  = 0,
-    parameter int NUP = (PB > 0) ? pe_map_pkg::NU * 64 : 1
+    parameter int NUP = 1                                    // PB > 0: NU * 64 (pe_map.svh)
 ) (
     input  logic              clk,
     input  logic              rst,
@@ -44,7 +44,8 @@ module mono_dp18 #(
     localparam int VW  = 41;                                 // node value slot (max node width 40)
     localparam int MPR = 4;                                  // lent adders per copy of the issue bit
     localparam int NMC = (NLP + MPR - 1) / MPR;
-    // ---- the registers in the PE vector (PB > 0, pe_map_pkg) ----
+    // ---- the registers in the PE vector (PB > 0, pe_map.svh) ----
+`include "pe_map.svh"
     // a register of W bits on free lane U at level LV (written when a state enters LV), issue-bit copy C
 `define MREG(U, W, LV, C, DIN, QOUT) \
     if (PB > 0) begin \
@@ -52,7 +53,7 @@ module mono_dp18 #(
         assign ms[(U)*64 +: (W)] = {(W){lsel[(C) % NMC][(LV)]}}; \
         assign mn[(U)*64 + (W) +: 64 - (W)] = '0; \
         assign ms[(U)*64 + (W) +: 64 - (W)] = '0; \
-        assign QOUT = mq[pe_map_pkg::lane_pos(U) +: (W)]; \
+        assign QOUT = mq[lane_pos(U) +: (W)]; \
     end else begin \
         always_ff @(posedge clk) QOUT <= (DIN); \
     end
@@ -105,14 +106,14 @@ module mono_dp18 #(
             logic [31:0] c, b;
             alu_canon #(.W(32)) u_canon (.t(xe[i*31 +: 31]), .y(c));
             alu_bar31 u_bar (.x(c), .y(b));
-            `MREG(pe_map_pkg::U_XB + i, 31, 1, i, byp ? xe[i*31 +: 31] : b[30:0], xb1[i*31 +: 31])
+            `MREG(U_XB + i, 31, 1, i, byp ? xe[i*31 +: 31] : b[30:0], xb1[i*31 +: 31])
         end
         for (genvar i = 8; i < 16; i++) begin : g_nobar
-            `MREG(pe_map_pkg::U_XB + i, 31, 1, i, xe[i*31 +: 31], xb1[i*31 +: 31])
+            `MREG(U_XB + i, 31, 1, i, xe[i*31 +: 31], xb1[i*31 +: 31])
         end
         for (genvar i = 0; i < 16; i++) begin : g_xb23
-            `MREG(pe_map_pkg::U_XB + 16 + i, 31, 2, i, xb1[i*31 +: 31], xb2[i*31 +: 31])
-            `MREG(pe_map_pkg::U_XB + 32 + i, 31, 3, i, xb2[i*31 +: 31], xb3[i*31 +: 31])
+            `MREG(U_XB + 16 + i, 31, 2, i, xb1[i*31 +: 31], xb2[i*31 +: 31])
+            `MREG(U_XB + 32 + i, 31, 3, i, xb2[i*31 +: 31], xb3[i*31 +: 31])
         end
     endgenerate
     // ---- L2-L3: squares (en = 0 on r = 0: 0)    L4: Bricks b_i = x_i + x_{i-1}^2 folded to <= p ----
@@ -121,7 +122,7 @@ module mono_dp18 #(
     assign en2 = (rr[1] != 9'd0);
     generate
         if (1) begin : g_br0
-            `MREG(pe_map_pkg::U_XB + 48, 31, 4, 0, xb3[0 +: 31], br[0 +: 31])
+            `MREG(U_XB + 48, 31, 4, 0, xb3[0 +: 31], br[0 +: 31])
         end
         for (genvar i = 1; i < 16; i++) begin : g_brick
             logic [61:0] sq;
@@ -129,7 +130,7 @@ module mono_dp18 #(
             alu_mul31_en_p2 u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq));
             alu_csa31 u_c (.x(xb3[i*31 +: 31]), .y(sq[30:0]), .z(sq[61:31]), .s(cs), .cr(cc));   // cs + cc = b_i (mod p)
             alu_addf #(.H(31)) u_f (.a({1'b0, cs}), .b({1'b0, cc}), .t(t));                      // <= p
-            `MREG(pe_map_pkg::U_XB + 48 + i, 31, 4, i, t, br[i*31 +: 31])
+            `MREG(U_XB + 48 + i, 31, 4, i, t, br[i*31 +: 31])
         end
     endgenerate
     logic [16*31-1:0] bn;
@@ -152,7 +153,7 @@ module mono_dp18 #(
             logic [VW-1:0] w;
             assign w  = v[IN*VW +: VW];                      // the input node is registered at the level before
             alu_addf #(.H(31)) u_r (.a({1'b0, w[30:0]}), .b({{(63 - WI){1'b0}}, w[WI-1:31]}), .t(t2));
-            `MREG(pe_map_pkg::U_RQ + m, 31, LVIN + 1, m, t2, rq)
+            `MREG(U_RQ + m, 31, LVIN + 1, m, t2, rq)
             assign redv[m*31 +: 31] = rq;
         end
         // ---- the nodes ----
@@ -184,9 +185,9 @@ module mono_dp18 #(
                 end
                 assign v[id*VW +: VW] = {10'd0, NA ? ~lf : lf};
                 if (LIFE >= 1) begin : g_d1                  // an odd leaf of a tree is summed a level later
-                    localparam int U1 = pe_map_pkg::U_D1 + pe_map_pkg::rank_dly(id, 1);
-                    localparam int U2 = pe_map_pkg::U_D2 + pe_map_pkg::rank_dly(id, 2);
-                    localparam int U3 = pe_map_pkg::U_D3 + pe_map_pkg::rank_dly(id, 3);
+                    localparam int U1 = U_D1 + rank_dly(id, 1);
+                    localparam int U2 = U_D2 + rank_dly(id, 2);
+                    localparam int U3 = U_D3 + rank_dly(id, 3);
                     logic [30:0] q1, q2, q3;
                     `MREG(U1, 31, LV + 1, id, NA ? ~lf : lf, q1)
                     `MREG(U2, 31, LV + 2, id, q1, q2)
@@ -234,7 +235,7 @@ module mono_dp18 #(
                                 default: kc = kara_pkg::KC_TAB[KI*31 +: 31];
                             endcase
                         end
-                        `MREG(pe_map_pkg::U_KC + KI, 31, LV - 1, id, kc, kcq)
+                        `MREG(U_KC + KI, 31, LV - 1, id, kc, kcq)
                         assign a = {{(W - 31){1'b0}}, kcq};
                     end else if (NA) begin : g_na
                         assign a = {{(W - WA){1'b0}}, ~ra[WA-1:0]};
@@ -257,7 +258,7 @@ module mono_dp18 #(
                     alu_addp #(.W(W)) u_add (.a(a), .b(b), .y(s));
                 end
                 if (PB > 0 && LD < NL) begin : g_twin       // the sum's register is the ARX lane word of the same sum
-                    assign q[31:0] = mq[pe_map_pkg::twin_pos(LD, CP) +: 32];
+                    assign q[31:0] = mq[twin_pos(LD, CP) +: 32];
                     if (W > 32) begin : g_hi                // the bits above 31: a register of the datapath
                         logic [W-33:0] qh;
                         always_ff @(posedge clk) qh <= s[W-1:32];
@@ -268,17 +269,17 @@ module mono_dp18 #(
                 end
                 assign v[id*VW +: VW] = {{(VW - W){1'b0}}, q};
                 if (LIFE >= 1) begin : g_d1
-                    localparam int U1 = pe_map_pkg::U_D1 + pe_map_pkg::rank_dly(id, 1);
+                    localparam int U1 = U_D1 + rank_dly(id, 1);
                     logic [W-1:0] q1;
                     `MREG(U1, W, LV + 1, id, q, q1)
                     assign vd1[id*VW +: VW] = {{(VW - W){1'b0}}, q1};
                     if (LIFE >= 2) begin : g_d2
-                        localparam int U2 = pe_map_pkg::U_D2 + pe_map_pkg::rank_dly(id, 2);
+                        localparam int U2 = U_D2 + rank_dly(id, 2);
                         logic [W-1:0] q2;
                         `MREG(U2, W, LV + 2, id, q1, q2)
                         assign vd2[id*VW +: VW] = {{(VW - W){1'b0}}, q2};
                         if (LIFE >= 3) begin : g_d3
-                            localparam int U3 = pe_map_pkg::U_D3 + pe_map_pkg::rank_dly(id, 3);
+                            localparam int U3 = U_D3 + rank_dly(id, 3);
                             logic [W-1:0] q3;
                             `MREG(U3, W, LV + 3, id, q2, q3)
                             assign vd3[id*VW +: VW] = {{(VW - W){1'b0}}, q3};
@@ -299,7 +300,7 @@ module mono_dp18 #(
             logic [30:0]   oq [0:ND];
             assign ov = v[OID*VW +: VW];
             alu_addf #(.H(OW - 31)) u_f (.a({1'b0, ov[30:0]}), .b({{(63 - OW){1'b0}}, ov[OW-1:31]}), .t(t));
-            `MREG(pe_map_pkg::U_OUT + i, 31, OL + 1, i, t, oq[0])
+            `MREG(U_OUT + i, 31, OL + 1, i, t, oq[0])
             for (genvar d = 1; d <= ND; d++) begin : g_dly
                 always_ff @(posedge clk) oq[d] <= oq[d - 1];
             end
