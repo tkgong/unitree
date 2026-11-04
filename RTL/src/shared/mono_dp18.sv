@@ -13,12 +13,13 @@
 // fused add + fold), the K constants are selected a level early and registered, the issue bit is replicated per MPR
 // lent adders (the fanout of the lend select).
 // PB > 0: the value registers live in the PE's register vector (PB bits: the ARX block groups' level registers; the map is
-// pe_map.svh), read on mq. A lent adder's sum: the ARX lane word that holds the same adder output (nothing driven). A chain
-// (a register and its delays): the head is selected, the delays are the ARX pass of the head's lane (nothing driven).
+// pe_map.svh), read on mq. A lent adder's sum: the ARX lane word that holds the same adder output (nothing driven); its
+// delays, where the next ARX steps only move that word: the moved word (nothing driven). A chain (a register and its
+// delays): the head is selected, the delays are the ARX pass of the head's lane (nothing driven).
 // Every other register and every chain head has a selected slot v: the datapath drives mn[v*64 +: W] (the value) and ms
 // (1 while a Monolith state enters that register's level: the state bit travelling with it), and the PE registers
-// ms ? mn : the ARX value there. The issue bit / r copies (mpc, rr), the squarers' first stage, their enable and the bits
-// above 31 of the lent sums stay registers of the datapath. CP: the PE's block-group copy.
+// ms ? mn : the ARX value there. The issue bit / r copies (mpc, rr), the squarers' enable and the bits above 31 of the
+// lent sums (and of their delays) stay registers of the datapath. CP: the PE's block-group copy.
 module mono_dp18 #(
     parameter int NL  = 216,
     parameter int NLP = (NL > 0) ? NL : 1,
@@ -287,10 +288,28 @@ module mono_dp18 #(
                 assign v[id*VW +: VW] = {{(VW - W){1'b0}}, q};
                 if (LIFE >= 1) begin : g_d1
                     logic [W-1:0] q1, q2, q3;
-                    if (LD < NL) begin : g_ld                // a lent sum's delays: generic slots
-                        `MREG(V_LD1 + R_LD1[id*10 +: 10], W, LV + 1, id, q, q1)
+                    if (LD < NL) begin : g_ld                // a lent sum's delays: the ARX move of its word when free,
+                        if (PB > 0 && lfree(LD, 1)) begin : g_f1 //   else generic slots
+                            assign q1[31:0] = mq[ldpos(LD, CP, 1) +: 32];
+                            if (W > 32) begin : g_hi
+                                logic [W-33:0] qh1;
+                                always_ff @(posedge clk) qh1 <= q[W-1:32];
+                                assign q1[W-1:32] = qh1;
+                            end
+                        end else begin : g_s1
+                            `MREG(V_LD1 + R_LD1[id*10 +: 10], W, LV + 1, id, q, q1)
+                        end
                         if (LIFE >= 2) begin : g_2
-                            `MREG(V_LD2 + R_LD2[id*10 +: 10], W, LV + 2, id, q1, q2)
+                            if (PB > 0 && lfree(LD, 2)) begin : g_f2
+                                assign q2[31:0] = mq[ldpos(LD, CP, 2) +: 32];
+                                if (W > 32) begin : g_hi
+                                    logic [W-33:0] qh2;
+                                    always_ff @(posedge clk) qh2 <= q1[W-1:32];
+                                    assign q2[W-1:32] = qh2;
+                                end
+                            end else begin : g_s2
+                                `MREG(V_LD2 + R_LD2[id*10 +: 10], W, LV + 2, id, q1, q2)
+                            end
                         end
                         if (LIFE >= 3) begin : g_3
                             `MREG(V_LD3 + R_LD3[id*10 +: 10], W, LV + 3, id, q2, q3)
