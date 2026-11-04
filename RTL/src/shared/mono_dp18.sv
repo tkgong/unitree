@@ -44,18 +44,26 @@ module mono_dp18 #(
     localparam int MPR = 4;                                  // lent adders per copy of the issue bit
     localparam int NMC = (NLP + MPR - 1) / MPR;
     // ---- the register slots (PB > 0) ----
-    function automatic bit has_dly(input int id, input int k);        // node id has a k-th delay stage register
-        logic [49:0] t;
-        t = kara_pkg::NODE_TAB[id*50 +: 50];
-        if (t[46:42] == 0 || t[49:47] == 5) return 0;
-        if (t[49:47] == 2) return t[4:0] >= 1;                        // a leaf with a life has all three stages
-        return t[4:0] >= k;
+    // node id has a k-th delay stage register (a leaf with a life has all three); Verilog-2005 style for Yosys
+    function automatic integer has_dly(input integer id, input integer k);
+        reg [49:0] t;
+        begin
+            t = kara_pkg::NODE_TAB[id*50 +: 50];
+            if (t[46:42] == 0 || t[49:47] == 5) has_dly = 0;
+            else if (t[49:47] == 2) has_dly = (t[4:0] >= 1);
+            else has_dly = (t[4:0] >= k);
+        end
     endfunction
-    function automatic int rank_dly(input int id, input int k);       // delay-k registers of the nodes before id
-        int n;
-        n = 0;
-        for (int j = 0; j < id; j++) if (has_dly(j, k)) n++;
-        return n;
+    function automatic integer rank_dly(input integer id, input integer k);  // delay-k registers of the nodes before id
+        integer j;
+        reg [49:0] t;
+        begin
+            rank_dly = 0;
+            for (j = 0; j < id; j = j + 1) begin
+                t = kara_pkg::NODE_TAB[j*50 +: 50];
+                if (t[46:42] != 0 && t[49:47] != 5 && (t[49:47] == 2 ? t[4:0] >= 1 : t[4:0] >= k)) rank_dly = rank_dly + 1;
+            end
+        end
     endfunction
     localparam int D1_0 = NN * VW;
     localparam int RQ0  = 2 * NN * VW;
@@ -97,8 +105,10 @@ module mono_dp18 #(
         for (int k = 2; k <= D; k++) rr[k] <= rr[k - 1];
     end
     logic [D:1] lsel [0:NMC-1];                              // lsel[c][L]: a state enters level L this cycle
-    always_comb for (int c = 0; c < NMC; c++) lsel[c] = {mpc[c][D-1:1], monoc[c]};
     generate
+        for (genvar c = 0; c < NMC; c++) begin : g_lsel
+            assign lsel[c] = {mpc[c][D-1:1], monoc[c]};
+        end
         if (PB == 0) begin : g_nopb
             assign mn = '0;
             assign ms = '0;
