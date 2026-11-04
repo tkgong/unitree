@@ -21,8 +21,10 @@
 // delays): the head is selected, the delays are the ARX pass of the head's lane (nothing driven).
 // Every other register and every chain head has a selected slot v: the datapath drives mn[v*64 +: W] (the value) and ms
 // (1 while a Monolith state enters that register's level: the state bit travelling with it), and the PE registers
-// ms ? mn : the ARX value there. The issue bit / r copies (mpc, rr), the squarers' enable and the bits above 31 of the
-// lent sums (and of their delays) stay registers of the datapath. CP: the PE's block-group copy.
+// ms ? mn : the ARX value there. The bits above 31 of the lent sums (and of their delays) and the state's r (rr, the
+// levels that read it) are bit fields of packed slots (several registers per slot, each bit with its own select). The
+// issue bit copies (mpc: they make the selects) and the squarers' enable stay registers of the datapath. CP: the PE's
+// block-group copy.
 module mono_dp18 #(
     parameter int NL  = 216,
     parameter int NLP = (NL > 0) ? NL : 1,
@@ -68,6 +70,18 @@ module mono_dp18 #(
 `define MREG(V, W, LV, C, DIN, QOUT) `MSEL(V, gpos(V), W, LV, C, DIN, QOUT)
     // the head of chain CI
 `define MHEAD(CI, W, LV, C, DIN, QOUT) `MSEL(NV + (CI), cpos(CI, 0), W, LV, C, DIN, QOUT)
+    // a W-bit field from bit OFF of the packed slots (several registers per slot, no zero fill), else a register; DIN and
+    // QOUT are plain names (bit-selected here), LB the block label
+`define MPK(LB, OFF, W, LV, C, DIN, QOUT) \
+    if (PB > 0) begin : LB \
+        for (genvar pj = 0; pj < (W); pj++) begin : g_b \
+            assign mn[(V_PK + ((OFF) + pj) / 64) * 64 + ((OFF) + pj) % 64] = DIN[pj]; \
+            assign ms[(V_PK + ((OFF) + pj) / 64) * 64 + ((OFF) + pj) % 64] = lsel[(C) % NMC][(LV)]; \
+            assign QOUT[pj] = mq[gpos(V_PK + ((OFF) + pj) / 64) + ((OFF) + pj) % 64]; \
+        end \
+    end else begin : LB \
+        always_ff @(posedge clk) QOUT <= DIN; \
+    end
     // delay K of chain CI: the ARX pass of the chain's lane (PB > 0), else a register of the datapath
 `define MFOL(CI, K, W, DIN, QOUT) \
     if (PB > 0) begin \
@@ -77,7 +91,7 @@ module mono_dp18 #(
     end
     // ---- mono / r travel with the state (mpc: NMC copies of the issue bit, copy c serves lent adders c*MPR..) ----
     logic [D:1] mpc [0:NMC-1];
-    logic [8:0] rr [1:D];
+    logic [D*9-1:0] rr;                                      // rr[(k-1)*9 +: 9]: the r of the state at level k
     logic [NMC-1:0] monoc;                                   // the issue bit per copy
 `ifdef KS45                                               // timing flow: a buffer cell per copy keeps the copies structurally
     generate for (genvar c = 0; c < NMC; c++) begin : g_mc    // distinct, so that opt_merge cannot fold them back into one
@@ -88,8 +102,6 @@ module mono_dp18 #(
 `endif
     always_ff @(posedge clk) begin
         for (int c = 0; c < NMC; c++) mpc[c] <= rst ? '0 : {mpc[c][D-1:1], monoc[c]};
-        rr[1] <= r;
-        for (int k = 2; k <= D; k++) rr[k] <= rr[k - 1];
     end
     logic [D:1] lsel [0:NMC-1];                              // lsel[c][L]: a state enters level L this cycle
     generate
@@ -99,6 +111,25 @@ module mono_dp18 #(
         if (PB == 0) begin : g_nopb
             assign mn = '0;
             assign ms = '0;
+        end else begin : g_pk0                               // the packed slots' unused bits
+            for (genvar u = NHB + 9 * RRN; u < NPK * 64; u++) begin : g_u
+                assign mn[V_PK * 64 + u] = 1'b0;
+                assign ms[V_PK * 64 + u] = 1'b0;
+            end
+        end
+        for (genvar k = 1; k <= D; k++) begin : g_rr          // the state's r, level by level (packed slots to RRN)
+            logic [8:0] rd, rq;
+            if (k == 1) begin : g_in
+                assign rd = r;
+            end else begin : g_dl
+                assign rd = rr[(k-2)*9 +: 9];
+            end
+            if (k <= RRN) begin : g_p
+                `MPK(g_f, NHB + 9 * (k - 1), 9, k, k, rd, rq)
+            end else begin : g_r
+                always_ff @(posedge clk) rq <= rd;
+            end
+            assign rr[(k-1)*9 +: 9] = rq;
         end
     endgenerate
     // ---- the 16 elements ----
@@ -131,7 +162,7 @@ module mono_dp18 #(
     // ---- L2-L3: squares (en = 0 on r = 0: 0)    L4: Bricks b_i = x_i + x_{i-1}^2 folded to <= p ----
     logic [16*31-1:0] br;
     logic             en2;
-    assign en2 = (rr[1] != 9'd0);
+    assign en2 = (rr[0 +: 9] != 9'd0);
     generate
         if (1) begin : g_br0
             `MREG(V_BR, 31, 4, 0, xb3[0 +: 31], br[0 +: 31])
@@ -254,7 +285,7 @@ module mono_dp18 #(
                     if (KA == 5) begin : g_ka                // operand A is the output constant K_i (i = its A field):
                         localparam int KI = int'(TA[35:26]);  // selected by the state's r one level early, registered
                         always_comb begin
-                            case (rr[LV - 2])
+                            case (rr[(LV-3)*9 +: 9])
                                 9'd1: kc = kara_pkg::KC_TAB[(1*16 + KI)*31 +: 31];
                                 9'd2: kc = kara_pkg::KC_TAB[(2*16 + KI)*31 +: 31];
                                 9'd3: kc = kara_pkg::KC_TAB[(3*16 + KI)*31 +: 31];
@@ -293,9 +324,10 @@ module mono_dp18 #(
                 end
                 if (PB > 0 && LD < NL) begin : g_twin       // the sum's register is the ARX lane word of the same sum
                     assign q[31:0] = mq[twin_pos(LD, CP) +: 32];
-                    if (W > 32) begin : g_hi                // the bits above 31: a register of the datapath
-                        logic [W-33:0] qh;
-                        always_ff @(posedge clk) qh <= s[W-1:32];
+                    if (W > 32) begin : g_hi                // the bits above 31: a packed-slot field
+                        logic [W-33:0] sh, qh;
+                        assign sh = s[W-1:32];
+                        `MPK(g_p, R_HI[id*12 +: 12], W - 32, LV, id, sh, qh)
                         assign q[W-1:32] = qh;
                     end
                 end else if (LIFE >= 1) begin : g_qc         // a private adder with delays: the head of a chain
@@ -310,8 +342,9 @@ module mono_dp18 #(
                         if (PB > 0 && lfree(LD, 1)) begin : g_f1 //   else generic slots
                             assign q1[31:0] = mq[ldpos(LD, CP, 1) +: 32];
                             if (W > 32) begin : g_hi
-                                logic [W-33:0] qh1;
-                                always_ff @(posedge clk) qh1 <= q[W-1:32];
+                                logic [W-33:0] dh1, qh1;
+                                assign dh1 = q[W-1:32];
+                                `MPK(g_p, R_HI[id*12 +: 12] + (W - 32), W - 32, LV + 1, id, dh1, qh1)
                                 assign q1[W-1:32] = qh1;
                             end
                         end else begin : g_s1
@@ -321,8 +354,9 @@ module mono_dp18 #(
                             if (PB > 0 && lfree(LD, 2)) begin : g_f2
                                 assign q2[31:0] = mq[ldpos(LD, CP, 2) +: 32];
                                 if (W > 32) begin : g_hi
-                                    logic [W-33:0] qh2;
-                                    always_ff @(posedge clk) qh2 <= q1[W-1:32];
+                                    logic [W-33:0] dh2, qh2;
+                                    assign dh2 = q1[W-1:32];
+                                    `MPK(g_p, R_HI[id*12 +: 12] + 2 * (W - 32), W - 32, LV + 2, id, dh2, qh2)
                                     assign q2[W-1:32] = qh2;
                                 end
                             end else begin : g_s2
@@ -374,4 +408,5 @@ module mono_dp18 #(
 `undef MREG
 `undef MHEAD
 `undef MFOL
+`undef MPK
 endmodule

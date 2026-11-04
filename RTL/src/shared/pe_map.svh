@@ -22,7 +22,8 @@
 //    (49 per block).
 //      generic slots: private adders without delays | the lent delays that are not free (d1, then d2, then d3) | the 41
 //      reductions | br (16) | the 16 K constants | the 16 outputs | the 15 squarer outputs | the 15 squarer first stages
-//      (4 slots each); then the chain heads.
+//      (4 slots each) | the packed slots (the bits above 31 of the lent sums and their delays, the state's r); then the
+//      chain heads.
     localparam int PM_NN = kara_pkg::NN;
     localparam int PM_LW = 22 * 64;                           // bits of one block at one level
 
@@ -75,8 +76,47 @@
     localparam int V_KC  = V_BR + 16;
     localparam int V_OUT = V_KC + 16;
     localparam int V_SQ  = V_OUT + 16;                        // squarer i = 1..15: output at V_SQ + i - 1,
-    localparam int V_S1  = V_SQ + 15;                         // first stage (233 bits) at V_S1 + 4 (i - 1) + 0..3
-    localparam int NV    = V_S1 + 60;
+    localparam int V_S1  = V_SQ + 15;                         // first stage (224 bits) at V_S1 + 4 (i - 1) + 0..3
+    // packed slots (bit fields, several registers per slot): the bits above 31 of each lent sum and of its moved delays
+    // (R_HI: first bit of node id's fields), then the state's r at levels 1..RRN (9 bits each)
+    function automatic [(PM_NN+1)*12-1:0] hranks(input integer dummy);
+        integer j, n, ld, s, nd, w;
+        reg [49:0] t;
+        begin
+            n = 0;
+            hranks = '0;
+            for (j = 0; j < PM_NN; j = j + 1) begin
+                hranks[j*12 +: 12] = n;
+                t  = kara_pkg::NODE_TAB[j*50 +: 50];
+                ld = kara_pkg::LEND_TAB[j*11 +: 9];
+                w  = t[41:36];
+                if (ld < 216 && w > 32 && t[46:42] != 0 && t[49:47] != 2 && t[49:47] != 5) begin
+                    s  = (ld < 120) ? ld / 20 + 1 : (ld - 120) / 16 + 1;
+                    nd = ((t[4:0] >= 1 && s != 6) ? 1 : 0) + ((t[4:0] >= 2 && s >= 2 && s <= 4) ? 1 : 0);   // lfree
+                    n  = n + (w - 32) * (1 + nd);
+                end
+            end
+            hranks[PM_NN*12 +: 12] = n;
+        end
+    endfunction
+    function automatic integer kclast(input integer dummy);   // the last level that reads a K constant
+        integer j;
+        reg [49:0] t;
+        begin
+            kclast = 0;
+            for (j = 0; j < PM_NN; j = j + 1) begin
+                t = kara_pkg::NODE_TAB[j*50 +: 50];
+                if (t[46:42] != 0 && t[49:47] != 0 && t[49:47] != 2 && t[49:47] != 5 &&
+                    kara_pkg::NODE_TAB[t[35:26]*50 + 47 +: 3] == 5 && t[46:42] > kclast) kclast = t[46:42];
+            end
+        end
+    endfunction
+    localparam logic [(PM_NN+1)*12-1:0] R_HI = hranks(0);
+    localparam int NHB   = R_HI[PM_NN*12 +: 12];
+    localparam int RRN   = kclast(0) - 2;                     // r at levels 1..RRN (the K constants read r two levels early)
+    localparam int V_PK  = V_S1 + 60;
+    localparam int NPK   = (NHB + 9 * RRN + 63) / 64;
+    localparam int NV    = V_PK + NPK;
     localparam int C_LF  = NPA;                               // chains
     localparam int C_XB  = C_LF + NLF;
     localparam int NC    = C_XB + 16;
