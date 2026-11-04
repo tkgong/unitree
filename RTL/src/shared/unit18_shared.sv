@@ -3,13 +3,14 @@
 // Monolith datapaths, blake and the round index rg[g] of each block group.
 //   PE 0: datapath 0 (lanes 396..403) + group 0 (blocks 0..4, lanes 0..109, copy 0) + group 1 (blocks 5..8, lanes 110..197)
 //   PE 1: datapath 1 (lanes 448..455) + group 2 (blocks 9..13, lanes 198..307, copy 1) + group 3 (blocks 14..17, 308..395)
-// The 9 blocks of a PE do their 216 adds per cycle on the datapath's lent adders (mono_dp18, alu_lend: the first 216 by width). A program
+// The 9 blocks of a PE do their 216 adds per cycle on the datapath's lent adders (mono_dp18, alu_lend: kara_pkg LEND_TAB). A program
 // holds either Monolith states or ARX blocks, never both (the compiler); the datapath lends while it holds no state.
 // One register vector per PE (pr0 / pr1, 76,032 bits): the ARX groups' six level registers. The Monolith datapath's registers
 // live in it (mono_dp18 PB, the map pe_map.svh): a lent sum in the ARX lane word of the same sum and a delay in the ARX
 // pass of its chain's lane (no select); every other register and every chain head on a selected slot, which takes the
-// Monolith value while a Monolith state enters the register's level. The Monolith programs run with blake = 0 and rg = 0
-// (the compiler), so that the ARX steps put the sums in those lane words and pass the chain lanes unchanged.
+// Monolith value while a Monolith state enters the register's level. The Monolith programs run with blake = 1 and rg = 0
+// (the compiler), so that the ARX steps put the sums in those lane words, pass the chain lanes unchanged and feed the
+// lent adders the sums LEND_TAB matches (no lend select on those operands).
 module unit18_shared (
     input  logic            clk,
     input  logic            rst,

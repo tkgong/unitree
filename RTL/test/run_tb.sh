@@ -4,6 +4,7 @@
 #   KS45=1: with the structural Kogge-Stone adders (the timing flow's RTL) and their cell models
 R=$(cd "$(dirname "$0")/.." && pwd); . "$R/env.sh"
 cd "$R/test"
+ulimit -s unlimited 2>/dev/null || true                 # the shared unit's Verilator model overflows an 8 MB stack
 ALU="${KS45:+-DKS45 $SRC_KS45 $SRC_CELLS} $SRC_ALU"
 for t in ${*:-$TOPS}; do
   O=obj_$t${KS45:+_ks45}

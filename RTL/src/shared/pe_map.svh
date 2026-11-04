@@ -1,22 +1,25 @@
 // pe_map.svh - where the Monolith datapath's registers live in its PE's register vector (unit18_shared, mono_dp18 PB > 0);
 // included in both modules (Yosys reads no package that refers to another package).
 // The PE vector = the level registers of the PE's two ARX block groups: group A (5 blocks) levels 1..6, then group B (4 blocks)
-// levels 1..6, each level NBK x 22 lanes x 64 bits. In the Monolith programs (blake = 0, rg = 0; RTL/compiler/bind):
+// levels 1..6, each level NBK x 22 lanes x 64 bits. In the Monolith programs (the ARX controls of BLAKE3: blake = 1, rg = 0;
+// RTL/compiler/bind):
 //  * step s writes its four sums (sum q = EY[q]) to lanes 16 / 17 (steps 1, 4), 0 / 4 (steps 2, 5), 2 / 6 (steps 3, 6)
-//    ({sum1, sum0}, {sum3, sum2}; copy 1, steps 2 and 6: {sum1, sum2}, {sum3, sum0}): a lent adder's sum register is that
-//    lane word (the same adder output: no select). Bits above 31 of a lent sum stay a register of the datapath.
+//    ({sum1, sum0}, {sum3, sum2}; step 6: {sum1, sum2}, {sum3, sum0}): a lent adder's sum register is that lane word
+//    (the same adder output: no select). Bits above 31 of a lent sum stay a register of the datapath.
 //  * lanes 8..15 and 18..21 pass unchanged at every step: a chain register -> its delays sits in lane 8..15, 18 or 19,
 //    the head at level 1 (selected), the delays at levels 2, 3 (the ARX pass: the same value, no select). Chains: the
 //    private adders with delays (q, d1[, d2]), the leaves with delays (q1, q2, q3), xb1 -> xb2 -> xb3 (3 levels at most).
 //    10 chain columns per block.
 //  * a lent sum's delays: where the ARX steps after the sum's step only move its word into a register the ARX reads
-//    (lfree / ldpos: step 4 sums two delays, step 2, 3, 5 sums one), a delay is that lane word (no select); the bits above
-//    31 stay registers of the datapath.
+//    (lfree / ldpos: step 2, 3, 4 sums two delays, step 1, 5 sums one), a delay is that lane word (no select); the bits
+//    above 31 stay registers of the datapath. The ARX adder of step 2 / 5 reads the sum of step 1 / 4 (lane 16 / 17), of
+//    step 5 / 6 the sum of step 2 / 3 two levels on: the lend binding (kara_pkg LEND_TAB) puts Monolith adders that read
+//    each other so, and that operand needs no lend select (mono_dp18).
 //  * every other register is selected on a generic lane: a lane whose ARX value in no program is an XOR of a sum of the
 //    same step (the select sits after an ARX path without the add -> XOR depth: timing), no sum lane, no lane holding a
 //    lent delay, no chain cell:
-//      level 1: 0 2 4 6 20 21 | 2: 1 2 5 6 20 21 | 3: 3 7 20 21 | 4: 2 3 6..15 18..21 | 5: 1 2 5 6 8..15 18..21 | 6: 7 18..21
-//    (53 per block).
+//      level 1: 0 2 4 6 20 21 | 2: 1 2 5 6 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 7 18..21
+//    (49 per block).
 //      generic slots: private adders without delays | the lent delays that are not free (d1, then d2, then d3) | the 41
 //      reductions | br (16) | the 16 K constants | the 16 outputs | the 15 squarer outputs | the 15 squarer first stages
 //      (4 slots each); then the chain heads.
@@ -37,10 +40,10 @@
                 ranks[j*10 +: 10] = n;
                 t = kara_pkg::NODE_TAB[j*50 +: 50];
                 add  = t[46:42] != 0 && t[49:47] != 2 && t[49:47] != 5;
-                lent = t[13:5] < 216;
-                ld   = t[13:5];
+                ld   = kara_pkg::LEND_TAB[j*11 +: 9];
+                lent = ld < 216;
                 s    = (ld < 120) ? ld / 20 + 1 : (ld - 120) / 16 + 1;
-                free = (k == 1 && s != 1 && s != 6) || (k == 2 && s == 4);    // = lfree(ld, k)
+                free = (k == 1 && s != 6) || (k == 2 && s >= 2 && s <= 4);    // = lfree(ld, k)
                 case (sel)
                     0: hit = add && !lent && t[4:0] == 0;
                     1: hit = add && !lent && t[4:0] >= 1;
@@ -80,10 +83,10 @@
     localparam int NS    = NV + NC;                           // selected slots: generic lanes, then the chain heads
 
     // generic lanes (closed forms, no loops)
-    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 6 6 4 16 16 5
+    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 6 6 4 14 14 5
         begin
             case (lv)
-                1, 2: gfree = 6;  3: gfree = 4;  4, 5: gfree = 16;
+                1, 2: gfree = 6;  3: gfree = 4;  4, 5: gfree = 14;
                 default: gfree = 5;
             endcase
         end
@@ -92,8 +95,8 @@
         begin
             case (lv)
                 1: gbelow = 0;   2: gbelow = 6;   3: gbelow = 12;
-                4: gbelow = 16;  5: gbelow = 32;  6: gbelow = 48;
-                default: gbelow = 53;
+                4: gbelow = 16;  5: gbelow = 30;  6: gbelow = 44;
+                default: gbelow = 49;
             endcase
         end
     endfunction
@@ -103,9 +106,8 @@
                 1:    gidx = (l < 8 && l % 2 == 0) ? l / 2 : (l >= 20) ? l - 16 : -1;
                 2:    gidx = (l == 1 || l == 2) ? l - 1 : (l == 5 || l == 6) ? l - 3 : (l >= 20) ? l - 16 : -1;
                 3:    gidx = (l == 3) ? 0 : (l == 7) ? 1 : (l >= 20) ? l - 18 : -1;
-                4:    gidx = (l == 2 || l == 3) ? l - 2 : (l >= 6 && l <= 15) ? l - 4 : (l >= 18) ? l - 6 : -1;
-                5:    gidx = (l == 1 || l == 2) ? l - 1 : (l == 5 || l == 6) ? l - 3 : (l >= 8 && l <= 15) ? l - 4 :
-                             (l >= 18) ? l - 6 : -1;
+                4:    gidx = (l == 3) ? 0 : (l >= 7 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
+                5:    gidx = (l == 1) ? 0 : (l == 5) ? 1 : (l >= 8 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
                 default: gidx = (l == 7) ? 0 : (l >= 18) ? l - 17 : -1;
             endcase
         end
@@ -116,8 +118,8 @@
                 1:    glane = (k < 4) ? 2 * k : k + 16;
                 2:    glane = (k < 2) ? k + 1 : (k < 4) ? k + 3 : k + 16;
                 3:    glane = (k == 0) ? 3 : (k == 1) ? 7 : k + 18;
-                4:    glane = (k < 2) ? k + 2 : (k < 12) ? k + 4 : k + 6;
-                5:    glane = (k < 2) ? k + 1 : (k < 4) ? k + 3 : (k < 12) ? k + 4 : k + 6;
+                4:    glane = (k == 0) ? 3 : (k < 10) ? k + 6 : k + 8;
+                5:    glane = (k == 0) ? 1 : (k == 1) ? 5 : (k < 10) ? k + 6 : k + 8;
                 default: glane = (k == 0) ? 7 : k + 17;
             endcase
         end
@@ -125,10 +127,10 @@
     function automatic integer gpos(input integer v);         // first bit of generic slot v in the PE vector
         integer g, nb, r, lv, rr;
         begin
-            g  = (v < 5 * 53) ? 0 : 1;
+            g  = (v < 5 * 49) ? 0 : 1;
             nb = (g == 0) ? 5 : 4;
-            r  = (g == 0) ? v : v - 5 * 53;
-            lv = (r < nb * 6) ? 1 : (r < nb * 12) ? 2 : (r < nb * 16) ? 3 : (r < nb * 32) ? 4 : (r < nb * 48) ? 5 : 6;
+            r  = (g == 0) ? v : v - 5 * 49;
+            lv = (r < nb * 6) ? 1 : (r < nb * 12) ? 2 : (r < nb * 16) ? 3 : (r < nb * 30) ? 4 : (r < nb * 44) ? 5 : 6;
             rr = r - nb * gbelow(lv);
             gpos = g * 6 * 5 * PM_LW + (lv - 1) * nb * PM_LW + ((rr / gfree(lv)) * 22 + glane(lv, rr % gfree(lv))) * 64;
         end
@@ -156,7 +158,7 @@
             k  = gidx(lv, l);
             lane_slot = -1;
             if (k >= 0) begin
-                v = g * 5 * 53 + nb * gbelow(lv) + b * gfree(lv) + k;
+                v = g * 5 * 49 + nb * gbelow(lv) + b * gfree(lv) + k;
                 if (v < NV) lane_slot = v;
             end else if (lv == 1 && chidx(l) >= 0) begin
                 v = g * 5 * 10 + b * 10 + chidx(l);
@@ -174,7 +176,7 @@
             s     = q / (4 * nb) + 1;
             b     = (q / 4) % nb;
             w     = q % 4;                                    // sum w = EY[w]
-            if (cp == 1 && (s == 2 || s == 6) && (w == 0 || w == 2)) w = 2 - w;   // the lo words of the two lanes swap
+            if (s == 6 && (w == 0 || w == 2)) w = 2 - w;      // step 6: the lo words of the two lanes swap
             lane  = (s == 1 || s == 4) ? 16 : (s == 2 || s == 5) ? 0 : 2;
             if (w >= 2) lane = lane + ((s == 1 || s == 4) ? 1 : 4);
             half  = w % 2;
@@ -182,18 +184,18 @@
         end
     endfunction
     // delay k of lent sum ld is free when the next ARX steps only move the sum's word into a register the ARX reads (the
-    // step ld's sum is in: 1..6). Step 1 sums move into levels 2, 3 lanes 16 / 17, which no ARX program reads (synthesis
-    // removes them in the ARX unit): a flip-flop kept for the Monolith only costs more than a select, so they take slots.
+    // step ld's sum is in: 1..6): step 1 -> level 2 lanes 16 / 17 (read by step 2; level 3 lanes 16 / 17 no ARX program
+    // reads: synthesis removes them in the ARX unit, and a flip-flop kept for the Monolith only costs more than a select);
+    // steps 2, 3, 4 -> two levels on (lanes 0 / 4, 2 / 6, 16 / 17 pass); step 5 -> step 6 (lanes 0 / 4, the hi words cross)
     function automatic integer lfree(input integer ld, input integer k);
         integer s;
         begin
             s     = (ld < 120) ? ld / 20 + 1 : (ld - 120) / 16 + 1;
-            lfree = ((k == 1 && s != 1 && s != 6) || (k == 2 && s == 4)) ? 1 : 0;
+            lfree = ((k == 1 && s != 6) || (k == 2 && s >= 2 && s <= 4)) ? 1 : 0;
         end
     endfunction
-    // the lane word holding delay k of lent sum ld (lfree(ld, k)): steps 1, 4 -> lanes 16 / 17 pass two steps; step 2 ->
-    // lanes 0 / 4 pass step 3; step 3 -> step 4 moves lane 2 / 6 to lane 0 / 4 (copy 0: the hi words cross); step 5 ->
-    // step 6 passes lanes 0 / 4 (copy 1: the hi words cross)
+    // the lane word holding delay k of lent sum ld (lfree(ld, k)): the sum's own word k levels on, but after step 6 the hi
+    // words of lanes 0 / 4 cross
     function automatic integer ldpos(input integer ld, input integer cp, input integer k);
         integer nb, gbase, q, s, b, w, lane, half, l2;
         begin
@@ -203,13 +205,10 @@
             s     = q / (4 * nb) + 1;
             b     = (q / 4) % nb;
             w     = q % 4;
-            if (cp == 1 && (s == 2 || s == 6) && (w == 0 || w == 2)) w = 2 - w;
             lane  = (s == 1 || s == 4) ? 16 : (s == 2 || s == 5) ? 0 : 2;
             if (w >= 2) lane = lane + ((s == 1 || s == 4) ? 1 : 4);
             half  = w % 2;
-            l2    = lane;
-            if (s == 3) l2 = (cp == 1) ? lane - 2 : ((lane == 2) == (half == 0)) ? 0 : 4;
-            if (s == 5 && cp == 1 && half == 1) l2 = 4 - lane;
+            l2    = (s == 5 && half == 1) ? 4 - lane : lane;
             ldpos = gbase + (s - 1 + k) * nb * PM_LW + (b * 22 + l2) * 64 + half * 32;
         end
     endfunction

@@ -7,14 +7,17 @@
 //   L4 Bricks b_i = x_i + lo31 + hi31 of the square (alu_csa31 + alu_addf: one carry chain), folded to <= p
 //   L5-L18 the Concrete as the Plonky3 Karatsuba conv16 (kara_pkg: bank at L5, pre-adds, 41 reductions + CSD trees,
 //          post-adds), output folds; one adder per level, every value registered at its level.
-// NL > 0: the adders with lend index < NL (kara_pkg NODE_TAB, 32-bit adders first) are alu_lend: while no Monolith
-// state is at their level they add ea + eb for the ARX blocks (ey, the same cycle). NL = 0: all adders private (the
+// NL > 0: the adders with lend index < NL (kara_pkg LEND_TAB, the compiler's lend binding) are alu_lend: while no
+// Monolith state is at their level they add ea + eb for the ARX blocks (ey, the same cycle). The Monolith programs run
+// the ARX controls of BLAKE3 (blake = 1, r = 0): an operand LEND_TAB marks is the ARX operand itself (the previous
+// step's sum, or the sum of three steps before two levels on), so it has no lend select. NL = 0: all adders private (the
 // natural Monolith unit). Timing: every level is one carry chain (the reductions and output folds are alu_addf, the
 // fused add + fold), the K constants are selected a level early and registered, the issue bit is replicated per MPR
 // lent adders (the fanout of the lend select).
 // PB > 0: the value registers live in the PE's register vector (PB bits: the ARX block groups' level registers; the map is
 // pe_map.svh), read on mq. A lent adder's sum: the ARX lane word that holds the same adder output (nothing driven); its
-// delays, where the next ARX steps only move that word: the moved word (nothing driven). A chain (a register and its
+// delays, where the next ARX steps only move that word into a register the ARX reads: the moved word (nothing driven).
+// A chain (a register and its
 // delays): the head is selected, the delays are the ARX pass of the head's lane (nothing driven).
 // Every other register and every chain head has a selected slot v: the datapath drives mn[v*64 +: W] (the value) and ms
 // (1 while a Monolith state enters that register's level: the state bit travelling with it), and the PE registers
@@ -193,7 +196,10 @@ module mono_dp18 #(
             localparam bit NA = T[25];
             localparam int B  = T[24:15];
             localparam bit NB = T[14];
-            localparam int LD = T[13:5];
+            localparam logic [10:0] LT = kara_pkg::LEND_TAB[id*11 +: 11];
+            localparam int LD = LT[8:0];                     // the lend binding (LEND_TAB, not NODE_TAB's lend field)
+            localparam bit MTA = LT[9];                      // operand A / B delivered by the ARX operand path
+            localparam bit MTB = LT[10];
             localparam int LIFE = T[4:0];
             if (LV == 0) begin : g_absent
                 assign v[id*VW +: VW] = '0;
@@ -271,10 +277,16 @@ module mono_dp18 #(
                     end
                 end
                 if (LD < NL) begin : g_lend
+                    // a matched operand read with delay 0 is the ARX operand EB (the previous step's sum), with delay 2
+                    // EA (the sum of three steps before): SWP puts A on the EB side / B on the EA side when so
+                    localparam bit SWP = (MTA && DA == 0) || (MTB && DB == 2);
+                    localparam bit MXA = (PB > 0) && (SWP ? MTB : MTA);
+                    localparam bit MXB = (PB > 0) && (SWP ? MTA : MTB);
                     logic [W-1:0] la, lb;
                     assign la = {{(W - 32){1'b0}}, ea[LD*32 +: 32]};
                     assign lb = {{(W - 32){1'b0}}, eb[LD*32 +: 32]};
-                    alu_lend #(.W(W)) u_add (.ext(!mpc[LD / MPR][LV - 1]), .ea(la), .eb(lb), .a(a), .b(b), .y(s));
+                    alu_lend #(.W(W), .MA(MXA), .MB(MXB)) u_add (.ext(!mpc[LD / MPR][LV - 1]), .ea(la), .eb(lb),
+                        .a(SWP ? b : a), .b(SWP ? a : b), .y(s));
                     assign ey[LD*32 +: 32] = s[31:0];
                 end else begin : g_priv
                     alu_addp #(.W(W)) u_add (.a(a), .b(b), .y(s));

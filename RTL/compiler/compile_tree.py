@@ -257,7 +257,9 @@ elif REQ == "ggm":
 else:
     sys.exit(f"unknown request '{REQ}': a program is one Merkle or one GGM request of one primitive (see usage)")
 GDEPTH = globals().get("GDEPTH", {})
-BLAKE = 1 if prim == 1 else 0                              # the program's primitive: one blake bit per issue
+BLAKE = 1 if prim in (1, 4) else 0                         # the program's primitive: one blake bit per issue (Monolith
+                                                            # programs run the ARX controls of BLAKE3: the shared unit's
+                                                            # lend binding, kara_pkg LEND_TAB)
 NCH = len(CH)
 ALT = prim == 2                                            # ChaCha20 traversals alternate the two chain copies (chain c <-> c + NCH / 2)
 assert not (MSLOTS and any(ready[p] for p in (1, 2))), "a program holds either Monolith states or ARX blocks, never both"

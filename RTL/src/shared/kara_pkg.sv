@@ -10,8 +10,9 @@
 //   out       16 roots (39..40 bits), folded (v[30:0] + v[W-1:31], + carry) at the next level
 // Node ids: bank 0..31 (kind 0; absent entries have level 0), pre (kind 1), K constants (kind 5, one per output),
 // CSD leaves (kind 2: A = mult, B = rotation, negA = complement), tree adds (kind 3), post adds (kind 4). A node is
-// registered at its level and read by nodes at later levels (life = extra delay stages). lend = index of the ARX add
-// the adder serves when it is lent (511: never), in order of width (32-bit adders first).
+// registered at its level and read by nodes at later levels (life = extra delay stages). NODE_TAB's lend field (the
+// first binding, by width) is no longer read: the lend binding is LEND_TAB, written by the compiler
+// (RTL/compiler/bind/lend_chain.py).
 // The tables were derived with the model script scratchpad/kara_model.py (checked against the circulant MDS).
 package kara_pkg;
     localparam logic [30:0] P = 31'h7FFFFFFF;
@@ -1030,4 +1031,105 @@ package kara_pkg;
         31'h7fffffbd
     };
     localparam int LB = 5;   localparam int NLEAF0 = 124;
+    // LEND_TAB[id*11 +: 11] = {B matched, A matched, lend[8:0]} (entry NN-1 first): the lend binding of the shared unit
+    // (RTL/compiler/bind/lend_chain.py). lend = the ARX add the adder runs on (group A: step, block, sum word
+    // = (lend / 20) + 1, (lend / 4) % 5, lend % 4; group B from 120: (lend - 120) / 16 + 1, ... % 4, ...; 511: private).
+    // A / B matched: in the Monolith programs (the ARX controls of BLAKE3) the ARX operand of that add is operand A / B
+    // itself (the sum of the step before, or of three steps before two levels on), so it has no lend select.
+    localparam logic [NN*11-1:0] LEND_TAB = {
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h0d7, 11'h0d6,
+        11'h0d5, 11'h1ff, 11'h1ff, 11'h1ff, 11'h0d4, 11'h0d3, 11'h0d2, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h0d1, 11'h0d0, 11'h0cf, 11'h1ff, 11'h1ff, 11'h0ce,
+        11'h0cd, 11'h1ff, 11'h1ff, 11'h1ff, 11'h0cc, 11'h0cb, 11'h0ca, 11'h1ff,
+        11'h1ff, 11'h0c9, 11'h0c8, 11'h1ff, 11'h2c7, 11'h297, 11'h077, 11'h0b7,
+        11'h076, 11'h087, 11'h1ff, 11'h2c6, 11'h296, 11'h0b6, 11'h075, 11'h086,
+        11'h1ff, 11'h2c5, 11'h033, 11'h074, 11'h0b5, 11'h1ff, 11'h295, 11'h2c4,
+        11'h085, 11'h073, 11'h0b4, 11'h1ff, 11'h294, 11'h2c3, 11'h084, 11'h072,
+        11'h0b3, 11'h293, 11'h071, 11'h083, 11'h1ff, 11'h2c2, 11'h292, 11'h0b2,
+        11'h070, 11'h082, 11'h1ff, 11'h2c1, 11'h291, 11'h06f, 11'h0b1, 11'h06e,
+        11'h081, 11'h1ff, 11'h2c0, 11'h032, 11'h06d, 11'h0b0, 11'h1ff, 11'h290,
+        11'h031, 11'h06c, 11'h080, 11'h1ff, 11'h2bf, 11'h030, 11'h06b, 11'h0af,
+        11'h1ff, 11'h28f, 11'h02f, 11'h06a, 11'h07f, 11'h1ff, 11'h2be, 11'h02e,
+        11'h069, 11'h0ae, 11'h1ff, 11'h28e, 11'h068, 11'h07e, 11'h1ff, 11'h2bd,
+        11'h28d, 11'h067, 11'h0ad, 11'h066, 11'h07d, 11'h1ff, 11'h2bc, 11'h065,
+        11'h0ac, 11'h28c, 11'h064, 11'h07c, 11'h1ff, 11'h2bb, 11'h28b, 11'h0ab,
+        11'h0a7, 11'h07b, 11'h1ff, 11'h2ba, 11'h0a6, 11'h0aa, 11'h1ff, 11'h28a,
+        11'h2b9, 11'h07a, 11'h0a5, 11'h0a9, 11'h1ff, 11'h289, 11'h02d, 11'h0a4,
+        11'h079, 11'h1ff, 11'h2b8, 11'h288, 11'h0a8, 11'h0a3, 11'h078, 11'h1ff,
+        11'h263, 11'h227, 11'h04f, 11'h0a2, 11'h013, 11'h1ff, 11'h262, 11'h0a1,
+        11'h04e, 11'h1ff, 11'h226, 11'h02c, 11'h0a0, 11'h012, 11'h261, 11'h09f,
+        11'h04d, 11'h1ff, 11'h225, 11'h09e, 11'h011, 11'h1ff, 11'h260, 11'h224,
+        11'h04c, 11'h09d, 11'h010, 11'h1ff, 11'h25f, 11'h223, 11'h09c, 11'h04b,
+        11'h09b, 11'h00f, 11'h1ff, 11'h25e, 11'h02b, 11'h09a, 11'h04a, 11'h1ff,
+        11'h222, 11'h02a, 11'h099, 11'h00e, 11'h1ff, 11'h25d, 11'h221, 11'h049,
+        11'h098, 11'h00d, 11'h1ff, 11'h25c, 11'h029, 11'h03b, 11'h048, 11'h1ff,
+        11'h1ff, 11'h220, 11'h25b, 11'h03a, 11'h00c, 11'h039, 11'h047, 11'h1ff,
+        11'h21f, 11'h028, 11'h038, 11'h00b, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h451, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h219, 11'h254, 11'h255, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h41b, 11'h456, 11'h21a, 11'h250, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h1ff, 11'h417, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h037,
+        11'h41d, 11'h1ff, 11'h1ff, 11'h036, 11'h1ff, 11'h035, 11'h1ff, 11'h418,
+        11'h416, 11'h1ff, 11'h41e, 11'h41c, 11'h1ff, 11'h1ff, 11'h45a, 11'h459,
+        11'h1ff, 11'h458, 11'h457, 11'h1ff, 11'h1ff, 11'h253, 11'h252, 11'h1ff,
+        11'h215, 11'h214, 11'h046, 11'h00a, 11'h045, 11'h009, 11'h044, 11'h008,
+        11'h043, 11'h1ff, 11'h007, 11'h042, 11'h006, 11'h03d, 11'h041, 11'h005,
+        11'h040, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff, 11'h1ff,
+        11'h1ff, 11'h03c, 11'h004, 11'h03f, 11'h003, 11'h03e, 11'h002, 11'h001,
+        11'h034, 11'h000
+    };
 endpackage
