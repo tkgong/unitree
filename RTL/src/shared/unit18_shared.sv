@@ -5,8 +5,10 @@
 //   PE 1: datapath 1 (lanes 448..455) + group 2 (blocks 9..13, lanes 198..307, copy 1) + group 3 (blocks 14..17, 308..395)
 // The 9 blocks of a PE do their 216 adds per cycle on the datapath's lent adders (mono_dp18, alu_lend: the first 216 by width). A program
 // holds either Monolith states or ARX blocks, never both (the compiler); the datapath lends while it holds no state.
-// One register vector per PE (pr0 / pr1, 76,032 bits): the ARX groups' six level registers, and the Monolith datapath's value
-// registers at fixed slots in it (mono_dp18 PB): a register takes the Monolith value when a Monolith state enters its level.
+// One register vector per PE (pr0 / pr1, 76,032 bits): the ARX groups' six level registers. The Monolith datapath's registers
+// live in it (mono_dp18 PB, the map pe_map_pkg): a lent sum in the ARX lane word of the same sum (no select), every other
+// register on a free lane, which takes the Monolith value while a Monolith state enters the register's level. The Monolith
+// programs run with blake = 0 and rg = 0 (the compiler), so that the ARX steps put the sums in those lane words.
 module unit18_shared (
     input  logic            clk,
     input  logic            rst,
@@ -21,15 +23,37 @@ module unit18_shared (
     localparam int G1 = 6 * 4 * BL * 64;                     // ... and of group 1 / 3 (4 blocks)
     localparam int PB = G0 + G1;                             // one register vector per PE: 76,032 bits
     logic [216*32-1:0] ea0, eb0, ey0, ea1, eb1, ey1;
-    logic [PB-1:0] pr0, mn0, ms0, an0, pr1, mn1, ms1, an1;
-    // the PE registers: the Monolith value where a Monolith state enters that register's level, else the ARX value
+    localparam int NU = pe_map_pkg::NU;
+    logic [PB-1:0]    pr0, an0, d0, pr1, an1, d1;
+    logic [NU*64-1:0] mn0, ms0, mn1, ms1;
+    // the PE registers: on a Monolith register's free lane the Monolith value while a Monolith state enters its level,
+    // everywhere else (the sum lanes included: the same adder outputs) the ARX value
+    generate
+        for (genvar g = 0; g < 2; g++) begin : g_grp
+            for (genvar lv = 1; lv <= 6; lv++) begin : g_lv
+                for (genvar b = 0; b < (g == 0 ? 5 : 4); b++) begin : g_blk
+                    for (genvar l = 0; l < BL; l++) begin : g_lane
+                        localparam int P = (g == 0 ? 0 : G0) + (lv - 1) * (g == 0 ? 5 : 4) * BL * 64 + (b * BL + l) * 64;
+                        localparam int U = pe_map_pkg::lane_u(g, lv, b, l);
+                        if (U >= 0) begin : g_m
+                            assign d0[P +: 64] = (ms0[U*64 +: 64] & mn0[U*64 +: 64]) | (~ms0[U*64 +: 64] & an0[P +: 64]);
+                            assign d1[P +: 64] = (ms1[U*64 +: 64] & mn1[U*64 +: 64]) | (~ms1[U*64 +: 64] & an1[P +: 64]);
+                        end else begin : g_a
+                            assign d0[P +: 64] = an0[P +: 64];
+                            assign d1[P +: 64] = an1[P +: 64];
+                        end
+                    end
+                end
+            end
+        end
+    endgenerate
     always_ff @(posedge clk) begin
-        pr0 <= (ms0 & mn0) | (~ms0 & an0);
-        pr1 <= (ms1 & mn1) | (~ms1 & an1);
+        pr0 <= d0;
+        pr1 <= d1;
     end
-    mono_dp18 #(.NL(216), .PB(PB)) u_dp0 (.clk(clk), .rst(rst), .x(lin[396*64 +: 8*64]), .mono(mono), .r(r), .y(lout[396*64 +: 8*64]),
+    mono_dp18 #(.NL(216), .PB(PB), .CP(0)) u_dp0 (.clk(clk), .rst(rst), .x(lin[396*64 +: 8*64]), .mono(mono), .r(r), .y(lout[396*64 +: 8*64]),
         .ea(ea0), .eb(eb0), .ey(ey0), .mn(mn0), .ms(ms0), .mq(pr0));
-    mono_dp18 #(.NL(216), .PB(PB)) u_dp1 (.clk(clk), .rst(rst), .x(lin[448*64 +: 8*64]), .mono(mono2), .r(r2), .y(lout[448*64 +: 8*64]),
+    mono_dp18 #(.NL(216), .PB(PB), .CP(1)) u_dp1 (.clk(clk), .rst(rst), .x(lin[448*64 +: 8*64]), .mono(mono2), .r(r2), .y(lout[448*64 +: 8*64]),
         .ea(ea1), .eb(eb1), .ey(ey1), .mn(mn1), .ms(ms1), .mq(pr1));
     // PE 0: group 0 (5 blocks) on adders 0..119, group 1 (4 blocks) on 120..215
     arx_group #(.NBK(5), .BL(BL), .CP(0), .PRIV(0), .EXT(1)) u_g0 (.clk(clk), .x(lin[0 +: 5*BL*64]), .r(rg[0 +: 9]), .blake(blake),

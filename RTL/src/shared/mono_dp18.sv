@@ -12,18 +12,19 @@
 // natural Monolith unit). Timing: every level is one carry chain (the reductions and output folds are alu_addf, the
 // fused add + fold), the K constants are selected a level early and registered, the issue bit is replicated per MPR
 // lent adders (the fanout of the lend select).
-// PB > 0: the datapath has no registers of its own (the shared unit): every value register lives in the PE's register
-// vector (PB bits, the ARX block groups' level registers) at a fixed slot. The datapath drives mn (the value to register)
-// and ms (1 where a Monolith state enters that register's level this cycle: the state bit travelling with it) and reads
-// the registers on mq; the PE registers ms ? mn : the ARX value. Slots (VW = 41-bit node slots, ranks in node order):
-//   node registers id*VW | first delays NN*VW + id*VW | reductions RQ0 + m*31 | xb1, xb2, xb3, br XB0 + (4 x 16 x 31)
-//   K constants KC0 + i*31 | outputs OUT0 + i*31 | second delays D2_0 + rank*VW | third delays D3_0 + rank*VW
-// The issue bit / r copies (mpc, rr) and the squarers' internal stage stay private.
+// PB > 0: the value registers live in the PE's register vector (PB bits: the ARX block groups' level registers; the map is
+// pe_map_pkg). A lent adder's sum register is the ARX lane word that holds the same adder output (read on mq, nothing
+// driven). Every other register has a free lane u: the datapath drives mn[u*64 +: W] (the value) and ms (1 while a
+// Monolith state enters that register's level: the state bit travelling with it), the PE registers ms ? mn : the ARX
+// value at pe_map_pkg::lane_pos(u), and the datapath reads it on mq. The issue bit / r copies (mpc, rr), the squarers'
+// internal stage and the bits above 31 of the lent sums stay registers of the datapath. CP: the PE's block-group copy.
 module mono_dp18 #(
     parameter int NL  = 216,
     parameter int NLP = (NL > 0) ? NL : 1,
     parameter int PB  = 0,
-    parameter int PBP = (PB > 0) ? PB : 1
+    parameter int PBP = (PB > 0) ? PB : 1,
+    parameter int CP  = 0,
+    parameter int NUP = (PB > 0) ? pe_map_pkg::NU * 64 : 1
 ) (
     input  logic              clk,
     input  logic              rst,
@@ -34,8 +35,8 @@ module mono_dp18 #(
     input  logic [NLP*32-1:0] ea,
     input  logic [NLP*32-1:0] eb,
     output logic [NLP*32-1:0] ey,
-    output logic [PBP-1:0]    mn,
-    output logic [PBP-1:0]    ms,
+    output logic [NUP-1:0]    mn,
+    output logic [NUP-1:0]    ms,
     input  logic [PBP-1:0]    mq
 );
     localparam int D   = 18;
@@ -43,50 +44,23 @@ module mono_dp18 #(
     localparam int VW  = 41;                                 // node value slot (max node width 40)
     localparam int MPR = 4;                                  // lent adders per copy of the issue bit
     localparam int NMC = (NLP + MPR - 1) / MPR;
-    // ---- the register slots (PB > 0) ----
-    // node id has a k-th delay stage register (a leaf with a life has all three); Verilog-2005 style for Yosys
-    function automatic integer has_dly(input integer id, input integer k);
-        reg [49:0] t;
-        begin
-            t = kara_pkg::NODE_TAB[id*50 +: 50];
-            if (t[46:42] == 0 || t[49:47] == 5) has_dly = 0;
-            else if (t[49:47] == 2) has_dly = (t[4:0] >= 1);
-            else has_dly = (t[4:0] >= k);
-        end
-    endfunction
-    function automatic integer rank_dly(input integer id, input integer k);  // delay-k registers of the nodes before id
-        integer j;
-        reg [49:0] t;
-        begin
-            rank_dly = 0;
-            for (j = 0; j < id; j = j + 1) begin
-                t = kara_pkg::NODE_TAB[j*50 +: 50];
-                if (t[46:42] != 0 && t[49:47] != 5 && (t[49:47] == 2 ? t[4:0] >= 1 : t[4:0] >= k)) rank_dly = rank_dly + 1;
-            end
-        end
-    endfunction
-    localparam int D1_0 = NN * VW;
-    localparam int RQ0  = 2 * NN * VW;
-    localparam int XB0  = RQ0 + 41 * 31;
-    localparam int KC0  = XB0 + 4 * 16 * 31;
-    localparam int OUT0 = KC0 + 16 * 31;
-    localparam int D2_0 = OUT0 + 16 * 31;
-    localparam int D3_0 = D2_0 + rank_dly(NN, 2) * VW;
-    localparam int SEND = D3_0 + rank_dly(NN, 3) * VW;     // first slot not used
-    // a register of W bits at level LV (written when a state enters LV), slot SL, issue-bit copy C
-`define MREG(SL, W, LV, C, DIN, QOUT) \
+    // ---- the registers in the PE vector (PB > 0, pe_map_pkg) ----
+    // a register of W bits on free lane U at level LV (written when a state enters LV), issue-bit copy C
+`define MREG(U, W, LV, C, DIN, QOUT) \
     if (PB > 0) begin \
-        assign mn[(SL) +: (W)] = (DIN); \
-        assign ms[(SL) +: (W)] = {(W){lsel[(C) % NMC][(LV)]}}; \
-        assign QOUT = mq[(SL) +: (W)]; \
+        assign mn[(U)*64 +: (W)] = (DIN); \
+        assign ms[(U)*64 +: (W)] = {(W){lsel[(C) % NMC][(LV)]}}; \
+        assign mn[(U)*64 + (W) +: 64 - (W)] = '0; \
+        assign ms[(U)*64 + (W) +: 64 - (W)] = '0; \
+        assign QOUT = mq[pe_map_pkg::lane_pos(U) +: (W)]; \
     end else begin \
         always_ff @(posedge clk) QOUT <= (DIN); \
     end
-    // the unused bits of a slot (zero: never selected)
-`define MFILL(SL, W) \
-    if (PB > 0 && (W) > 0) begin \
-        assign mn[(SL) +: (W)] = '0; \
-        assign ms[(SL) +: (W)] = '0; \
+    // a free lane no register uses
+`define MFILL(U) \
+    if (PB > 0) begin \
+        assign mn[(U)*64 +: 64] = '0; \
+        assign ms[(U)*64 +: 64] = '0; \
     end
     // ---- mono / r travel with the state (mpc: NMC copies of the issue bit, copy c serves lent adders c*MPR..) ----
     logic [D:1] mpc [0:NMC-1];
@@ -112,9 +86,6 @@ module mono_dp18 #(
         if (PB == 0) begin : g_nopb
             assign mn = '0;
             assign ms = '0;
-        end else if (SEND < PB) begin : g_tail
-            assign mn[PB-1:SEND] = '0;
-            assign ms[PB-1:SEND] = '0;
         end
     endgenerate
     // ---- the 16 elements ----
@@ -134,14 +105,14 @@ module mono_dp18 #(
             logic [31:0] c, b;
             alu_canon #(.W(32)) u_canon (.t(xe[i*31 +: 31]), .y(c));
             alu_bar31 u_bar (.x(c), .y(b));
-            `MREG(XB0 + i*31, 31, 1, i, byp ? xe[i*31 +: 31] : b[30:0], xb1[i*31 +: 31])
+            `MREG(pe_map_pkg::U_XB + i, 31, 1, i, byp ? xe[i*31 +: 31] : b[30:0], xb1[i*31 +: 31])
         end
         for (genvar i = 8; i < 16; i++) begin : g_nobar
-            `MREG(XB0 + i*31, 31, 1, i, xe[i*31 +: 31], xb1[i*31 +: 31])
+            `MREG(pe_map_pkg::U_XB + i, 31, 1, i, xe[i*31 +: 31], xb1[i*31 +: 31])
         end
         for (genvar i = 0; i < 16; i++) begin : g_xb23
-            `MREG(XB0 + 496 + i*31, 31, 2, i, xb1[i*31 +: 31], xb2[i*31 +: 31])
-            `MREG(XB0 + 992 + i*31, 31, 3, i, xb2[i*31 +: 31], xb3[i*31 +: 31])
+            `MREG(pe_map_pkg::U_XB + 16 + i, 31, 2, i, xb1[i*31 +: 31], xb2[i*31 +: 31])
+            `MREG(pe_map_pkg::U_XB + 32 + i, 31, 3, i, xb2[i*31 +: 31], xb3[i*31 +: 31])
         end
     endgenerate
     // ---- L2-L3: squares (en = 0 on r = 0: 0)    L4: Bricks b_i = x_i + x_{i-1}^2 folded to <= p ----
@@ -150,7 +121,7 @@ module mono_dp18 #(
     assign en2 = (rr[1] != 9'd0);
     generate
         if (1) begin : g_br0
-            `MREG(XB0 + 1488, 31, 4, 0, xb3[0 +: 31], br[0 +: 31])
+            `MREG(pe_map_pkg::U_XB + 48, 31, 4, 0, xb3[0 +: 31], br[0 +: 31])
         end
         for (genvar i = 1; i < 16; i++) begin : g_brick
             logic [61:0] sq;
@@ -158,7 +129,7 @@ module mono_dp18 #(
             alu_mul31_en_p2 u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq));
             alu_csa31 u_c (.x(xb3[i*31 +: 31]), .y(sq[30:0]), .z(sq[61:31]), .s(cs), .cr(cc));   // cs + cc = b_i (mod p)
             alu_addf #(.H(31)) u_f (.a({1'b0, cs}), .b({1'b0, cc}), .t(t));                      // <= p
-            `MREG(XB0 + 1488 + i*31, 31, 4, i, t, br[i*31 +: 31])
+            `MREG(pe_map_pkg::U_XB + 48 + i, 31, 4, i, t, br[i*31 +: 31])
         end
     endgenerate
     logic [16*31-1:0] bn;
@@ -181,7 +152,7 @@ module mono_dp18 #(
             logic [VW-1:0] w;
             assign w  = v[IN*VW +: VW];                      // the input node is registered at the level before
             alu_addf #(.H(31)) u_r (.a({1'b0, w[30:0]}), .b({{(63 - WI){1'b0}}, w[WI-1:31]}), .t(t2));
-            `MREG(RQ0 + m*31, 31, LVIN + 1, m, t2, rq)
+            `MREG(pe_map_pkg::U_RQ + m, 31, LVIN + 1, m, t2, rq)
             assign redv[m*31 +: 31] = rq;
         end
         // ---- the nodes ----
@@ -196,11 +167,8 @@ module mono_dp18 #(
             localparam bit NB = T[14];
             localparam int LD = T[13:5];
             localparam int LIFE = T[4:0];
-            if (LV == 0 || KD == 5 || KD == 2) begin : g_noq  // no node register: its slot is unused
-                `MFILL(id*VW, VW)
-            end
-            if (!has_dly(id, 1)) begin : g_nod1
-                `MFILL(D1_0 + id*VW, VW)
+            if (LV == 0 || KD == 5 || KD == 2 || LD < NL) begin : g_noq  // no free lane: no register, or a lent sum
+                `MFILL(id)
             end
             if (LV == 0) begin : g_absent
                 assign v[id*VW +: VW] = '0;
@@ -216,15 +184,13 @@ module mono_dp18 #(
                 end
                 assign v[id*VW +: VW] = {10'd0, NA ? ~lf : lf};
                 if (LIFE >= 1) begin : g_d1                  // an odd leaf of a tree is summed a level later
-                    localparam int R2 = rank_dly(id, 2);
-                    localparam int R3 = rank_dly(id, 3);
+                    localparam int U1 = pe_map_pkg::U_D1 + pe_map_pkg::rank_dly(id, 1);
+                    localparam int U2 = pe_map_pkg::U_D2 + pe_map_pkg::rank_dly(id, 2);
+                    localparam int U3 = pe_map_pkg::U_D3 + pe_map_pkg::rank_dly(id, 3);
                     logic [30:0] q1, q2, q3;
-                    `MREG(D1_0 + id*VW, 31, LV + 1, id, NA ? ~lf : lf, q1)
-                    `MFILL(D1_0 + id*VW + 31, VW - 31)
-                    `MREG(D2_0 + R2*VW, 31, LV + 2, id, q1, q2)
-                    `MFILL(D2_0 + R2*VW + 31, VW - 31)
-                    `MREG(D3_0 + R3*VW, 31, LV + 3, id, q2, q3)
-                    `MFILL(D3_0 + R3*VW + 31, VW - 31)
+                    `MREG(U1, 31, LV + 1, id, NA ? ~lf : lf, q1)
+                    `MREG(U2, 31, LV + 2, id, q1, q2)
+                    `MREG(U3, 31, LV + 3, id, q2, q3)
                     assign vd1[id*VW +: VW] = {10'd0, q1};
                     assign vd2[id*VW +: VW] = {10'd0, q2};
                     assign vd3[id*VW +: VW] = {10'd0, q3};
@@ -268,7 +234,7 @@ module mono_dp18 #(
                                 default: kc = kara_pkg::KC_TAB[KI*31 +: 31];
                             endcase
                         end
-                        `MREG(KC0 + KI*31, 31, LV - 1, id, kc, kcq)
+                        `MREG(pe_map_pkg::U_KC + KI, 31, LV - 1, id, kc, kcq)
                         assign a = {{(W - 31){1'b0}}, kcq};
                     end else if (NA) begin : g_na
                         assign a = {{(W - WA){1'b0}}, ~ra[WA-1:0]};
@@ -290,25 +256,31 @@ module mono_dp18 #(
                 end else begin : g_priv
                     alu_addp #(.W(W)) u_add (.a(a), .b(b), .y(s));
                 end
-                `MREG(id*VW, W, LV, id, s, q)
-                `MFILL(id*VW + W, VW - W)
+                if (PB > 0 && LD < NL) begin : g_twin       // the sum's register is the ARX lane word of the same sum
+                    assign q[31:0] = mq[pe_map_pkg::twin_pos(LD, CP) +: 32];
+                    if (W > 32) begin : g_hi                // the bits above 31: a register of the datapath
+                        logic [W-33:0] qh;
+                        always_ff @(posedge clk) qh <= s[W-1:32];
+                        assign q[W-1:32] = qh;
+                    end
+                end else begin : g_q
+                    `MREG(id, W, LV, id, s, q)
+                end
                 assign v[id*VW +: VW] = {{(VW - W){1'b0}}, q};
                 if (LIFE >= 1) begin : g_d1
+                    localparam int U1 = pe_map_pkg::U_D1 + pe_map_pkg::rank_dly(id, 1);
                     logic [W-1:0] q1;
-                    `MREG(D1_0 + id*VW, W, LV + 1, id, q, q1)
-                    `MFILL(D1_0 + id*VW + W, VW - W)
+                    `MREG(U1, W, LV + 1, id, q, q1)
                     assign vd1[id*VW +: VW] = {{(VW - W){1'b0}}, q1};
                     if (LIFE >= 2) begin : g_d2
-                        localparam int R2 = rank_dly(id, 2);
+                        localparam int U2 = pe_map_pkg::U_D2 + pe_map_pkg::rank_dly(id, 2);
                         logic [W-1:0] q2;
-                        `MREG(D2_0 + R2*VW, W, LV + 2, id, q1, q2)
-                        `MFILL(D2_0 + R2*VW + W, VW - W)
+                        `MREG(U2, W, LV + 2, id, q1, q2)
                         assign vd2[id*VW +: VW] = {{(VW - W){1'b0}}, q2};
                         if (LIFE >= 3) begin : g_d3
-                            localparam int R3 = rank_dly(id, 3);
+                            localparam int U3 = pe_map_pkg::U_D3 + pe_map_pkg::rank_dly(id, 3);
                             logic [W-1:0] q3;
-                            `MREG(D3_0 + R3*VW, W, LV + 3, id, q2, q3)
-                            `MFILL(D3_0 + R3*VW + W, VW - W)
+                            `MREG(U3, W, LV + 3, id, q2, q3)
                             assign vd3[id*VW +: VW] = {{(VW - W){1'b0}}, q3};
                         end
                     end
@@ -327,7 +299,7 @@ module mono_dp18 #(
             logic [30:0]   oq [0:ND];
             assign ov = v[OID*VW +: VW];
             alu_addf #(.H(OW - 31)) u_f (.a({1'b0, ov[30:0]}), .b({{(63 - OW){1'b0}}, ov[OW-1:31]}), .t(t));
-            `MREG(OUT0 + i*31, 31, OL + 1, i, t, oq[0])
+            `MREG(pe_map_pkg::U_OUT + i, 31, OL + 1, i, t, oq[0])
             for (genvar d = 1; d <= ND; d++) begin : g_dly
                 always_ff @(posedge clk) oq[d] <= oq[d - 1];
             end
