@@ -19,6 +19,8 @@
 // delays, where the next ARX steps only move that word into a register the ARX reads: the moved word (nothing driven).
 // A chain (a register and its
 // delays): the head is selected, the delays are the ARX pass of the head's lane (nothing driven).
+// A reduction with an operand word (kara_pkg OPW_TAB): its register is that word of the PE vector, rotated so that the
+// word is the CSD leaf the lent adder of steps 3 / 6 there reads (that operand: the ARX operand EA, no lend select).
 // Every other register and every chain head has a selected slot v: the datapath drives mn[v*64 +: W] (the value) and ms
 // (1 while a Monolith state enters that register's level: the state bit travelling with it), and the PE registers
 // ms ? mn : the ARX value there. The bits above 31 of the lent sums (and of their delays) and the state's r (rr, the
@@ -230,8 +232,34 @@ module mono_dp18 #(
             logic [VW-1:0] w;
             assign w  = v[IN*VW +: VW];                      // the input node is registered at the level before
             alu_addf #(.H(31)) u_r (.a({1'b0, w[30:0]}), .b({{(63 - WI){1'b0}}, w[WI-1:31]}), .t(t2));
-            `MREG(V_RQ + m, 31, LVIN + 1, m, t2, rq)
+            if (PB > 0 && rq_word(m) >= 0) begin : g_ow      // on its operand word, rotated left by ROT (OPW_TAB)
+                localparam int OW  = rq_word(m);
+                localparam int ROT = int'(kara_pkg::OPW_TAB[OW*12 +: 5]);
+                logic [30:0] wd, wq;
+                if (ROT == 0) begin : g_r0
+                    assign wd = t2;
+                    assign rq = wq;
+                end else begin : g_rk
+                    assign wd = {t2[30-ROT:0], t2[30:31-ROT]};
+                    assign rq = {wq[ROT-1:0], wq[30:ROT]};
+                end
+                assign mn[(OP0 + OW / 2)*64 + (OW % 2)*32 +: 32] = {1'b0, wd};
+                assign ms[(OP0 + OW / 2)*64 + (OW % 2)*32 +: 32] = {32{lsel[m % NMC][LVIN + 1]}};
+                assign wq = mq[opos(OW) +: 31];
+                assign mn[(V_RQ + m)*64 +: 64] = '0;         // its generic slot stays unused
+                assign ms[(V_RQ + m)*64 +: 64] = '0;
+            end else begin : g_gs
+                `MREG(V_RQ + m, 31, LVIN + 1, m, t2, rq)
+            end
             assign redv[m*31 +: 31] = rq;
+        end
+        if (PB > 0) begin : g_owz                            // the operand words no reduction uses select nothing
+            for (genvar ow = 0; ow < 72; ow++) begin : g_w
+                if (!kara_pkg::OPW_TAB[ow*12 + 11]) begin : g_z
+                    assign mn[(OP0 + ow / 2)*64 + (ow % 2)*32 +: 32] = '0;
+                    assign ms[(OP0 + ow / 2)*64 + (ow % 2)*32 +: 32] = '0;
+                end
+            end
         end
         // ---- the nodes ----
         for (genvar id = 0; id < NN; id++) begin : g_node
@@ -324,9 +352,13 @@ module mono_dp18 #(
                     end
                 end
                 if (LD < NL) begin : g_lend
-                    // a matched operand read with delay 0 is the ARX operand EB (the previous step's sum), with delay 2
-                    // EA (the sum of three steps before): SWP puts A on the EB side / B on the EA side when so
-                    localparam bit SWP = (MTA && DA == 0) || (MTB && DB == 2);
+                    // a matched operand is on EB when it is a lent sum read with delay 0 (the previous step's sum), on EA
+                    // when it is a sum read with delay 2 (three steps before) or a CSD leaf (its reduction's operand
+                    // word, steps 3 / 6): SWP puts A on the EB side / B on the EA side when so
+                    localparam int KB  = (KD == 0) ? 0 : int'(TB[49:47]);
+                    localparam bit AEB = (KA != 2) && (DA == 0);
+                    localparam bit BEA = (KB == 2) || (DB == 2);
+                    localparam bit SWP = (MTA && AEB) || (MTB && BEA);
                     localparam bit MXA = (PB > 0) && (SWP ? MTB : MTA);
                     localparam bit MXB = (PB > 0) && (SWP ? MTA : MTB);
                     logic [W-1:0] la, lb;

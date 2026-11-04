@@ -109,10 +109,39 @@ for k, (p, c) in enumerate(PAIRS2):                         # a delay-2 pair: st
     g, b, w = cols[k]
     pos[p], pos[c] = ld_of(g, 3, b, w), ld_of(g, 6, b, w)
 rest = sorted(lent - set(pos), key=lambda i: (-N[i]["life"], i))
-slots = [ld_of(g, s, b, w) for s in (3,) for (g, b, w) in cols[len(PAIRS2):]] + \
-        [ld_of(g, lo + k, b, w) for ((g, b, w), lo) in free_pairs for k in (0, 1)] + \
-        [ld_of(g, s, b, w) for s in (6,) for (g, b, w) in cols[len(PAIRS2):]]
-for i, ld in zip(rest, slots): pos[i] = ld
+assert not free_pairs and not PAIRS2, "the leaf placement below assumes every step 1/2/4/5 position holds a pair"
+# the rest at steps 3 (the nodes with delays: free there) and 6. A node C there whose operand X is a plain leaf (delay 0,
+# no complement) of reduction m gets m's register in the ARX operand word of its position (step 3 / 6: level 2 / 5,
+# lane 2 / 6, half w % 2), rotated by the leaf's amount: then X is the ARX operand (no lend select). One word per
+# reduction (max bipartite matching); a step-6 word only where the column's step-3 sum has no second delay (that delay
+# is the same word, ldpos).
+S3, S6 = rest[:36], rest[36:]
+assert all(N[i]["life"] == 0 for i in S6)
+def leafops(i):
+    out = []
+    for side in "AB":
+        p = N[i][side]
+        if p < NN and N[p]["kind"] == 2 and N[i]["L"] - N[p]["L"] - 1 == 0 and not N[i]["n" + side] and not N[p]["nA"]:
+            out.append((side, N[p]["A"], N[p]["B"]))
+    return out
+mt = {}                                                     # reduction m -> (node, side, rotation)
+def aug(i, seen):
+    for side, m, rot in leafops(i):
+        if m in seen: continue
+        seen.add(m)
+        if m not in mt or aug(mt[m][0], seen): mt[m] = (i, side, rot); return True
+    return False
+for i in sorted(rest, key=lambda i: (len(leafops(i)), i)): aug(i, set())
+lm = {v[0]: (m, v[1], v[2]) for m, v in mt.items()}        # node -> (reduction, side, rotation)
+m6 = [i for i in S6 if i in lm]
+ok3 = sorted([i for i in S3 if N[i]["life"] < 2], key=lambda i: i)
+while len(m6) > len(ok3): del lm[m6.pop()]                  # not enough step-3 partners without a second delay
+oth3 = [i for i in S3 if i not in ok3[:len(m6)]]
+cols3 = cols                                               # column k: step-3 node, step-6 node
+pair36 = list(zip(ok3[:len(m6)], m6)) + list(zip(oth3, [i for i in S6 if i not in m6]))
+assert len(pair36) == 36
+for (g, b, w), (n3, n6) in zip(cols3, pair36):
+    pos[n3], pos[n6] = ld_of(g, 3, b, w), ld_of(g, 6, b, w)
 assert len(pos) == 216 and len(set(pos.values())) == 216
 
 # ---- matched operands: the ARX path delivers operand X of lent node C ----
@@ -129,9 +158,20 @@ for c, ldc in pos.items():
         sp, bp, wp, gp = step_w(pos[p])
         if (gp, bp, wp) == (g, b, w) and any(l[0] == sp and l[1] == s and l[2] == d for l in LINKS):
             match.setdefault(c, set()).add(side)
+nlink = sum(len(v) for v in match.values())
+# the leaf matches: OPW_TAB, one entry per operand word of a PE (lane index oi = group base 0 / 20 + 4 b + 2 (level 5) +
+# (lane 6), word ow = 2 oi + half): {used, reduction m[5:0], rotation[4:0]}
+opw = [0] * 72
+for i, (m, side, rot) in lm.items():
+    s, b, w, g = step_w(pos[i])
+    assert s in (3, 6)
+    oi = (0 if g == 0 else 20) + 4 * b + (2 if s == 6 else 0) + (1 if w >= 2 else 0)
+    opw[2 * oi + w % 2] = 1 << 11 | m << 5 | rot
+    match.setdefault(i, set()).add(side)
 nm = sum(len(v) for v in match.values())
 print(f"// links {LINKS}", file=sys.stderr)
-print(f"// pairs {len(PAIRS)}, matched operands {nm}, lent widths {collections.Counter(N[i]['W'] for i in lent)}, "
+print(f"// pairs {len(PAIRS)}, matched operands {nm} ({nlink} sums, {len(lm)} leaves: {len([i for i in lm if i in S3])} "
+      f"at step 3), lent widths {collections.Counter(N[i]['W'] for i in lent)}, "
       f"delays without a move (bits) {sum(nonfree(i, step_w(pos[i])[0]) for i in pos)}", file=sys.stderr)
 ent = []
 for i in range(NN):
@@ -141,4 +181,7 @@ for i in range(NN):
 lines = []
 for k in range(NN - 1, -1, -8):
     lines.append("        " + ", ".join(f"11'h{ent[j]:03x}" for j in range(k, max(k - 8, -1), -1)))
+print("LEND_TAB")
 print(",\n".join(lines))
+print("OPW_TAB")
+print(",\n".join("        " + ", ".join(f"12'h{opw[j]:03x}" for j in range(k, max(k - 8, -1), -1)) for k in range(71, -1, -8)))

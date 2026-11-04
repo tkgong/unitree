@@ -18,8 +18,8 @@
 //  * every other register is selected on a generic lane: a lane whose ARX value in no program is an XOR of a sum of the
 //    same step (the select sits after an ARX path without the add -> XOR depth: timing), no sum lane, no lane holding a
 //    lent delay, no chain cell:
-//      level 2: 1 2 5 6 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 7 18..21 (43 per block;
-//      level 1 holds the clean slots and the chain heads)
+//      level 2: 1 5 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 7 18..21 (41 per block;
+//      level 1 holds the clean slots and the chain heads, levels 2 / 5 lanes 2 / 6 the operand lanes)
 //      generic slots: private adders without delays | the lent delays that are not free (d1, then d2, then d3) | the 41
 //      reductions | br (16) | the 16 K constants | the 16 outputs | the first stage's 4th slot of squarers 13..15 | the
 //      packed slots (the bits above 31 of the lent sums and their delays, the state's r); then the chain heads; then the
@@ -123,7 +123,39 @@
     localparam int NC    = C_XB + 16;
     localparam int NCL   = 72;                                // clean slots (level 1, 8 lanes per block)
     localparam int CL0   = NV + NC;
-    localparam int NS    = NV + NC + NCL;                     // slots: generic lanes, the chain heads, the clean slots
+    localparam int OP0   = NV + NC + NCL;                     // operand lanes: 36 per PE (kara_pkg OPW_TAB)
+    localparam int NS    = OP0 + 36;                          // slots: generic lanes, chain heads, clean slots, operand lanes
+
+    // operand lanes: level 2 / 5, lanes 2 / 6 of every block (the a operands of the ARX adds of step 3 / 6). Lane
+    // oi = (group A: 0, B: 20) + 4 block + 2 (level 5) + (lane 6); word ow = 2 oi + half holds the register of a reduction
+    // (OPW_TAB), rotated so that the word is the CSD leaf the lent adder at that position reads (no lend select). The
+    // unused words select nothing (a step-3 sum's second delay is the ARX move into its level-5 word).
+    function automatic integer op_lane(input integer g, input integer lv, input integer b, input integer l);
+        begin
+            op_lane = ((lv == 2 || lv == 5) && (l == 2 || l == 6)) ? (g == 0 ? 0 : 20) + 4 * b + (lv == 5 ? 2 : 0) + (l == 6 ? 1 : 0) : -1;
+        end
+    endfunction
+    function automatic integer opos(input integer ow);        // first bit of operand word ow
+        integer oi, g, r, nb;
+        begin
+            oi   = ow / 2;
+            g    = (oi < 20) ? 0 : 1;
+            nb   = (g == 0) ? 5 : 4;
+            r    = (g == 0) ? oi : oi - 20;
+            opos = g * 6 * 5 * PM_LW + ((r % 4 >= 2) ? 4 : 1) * nb * PM_LW + ((r / 4) * 22 + ((r % 2 == 1) ? 6 : 2)) * 64 + (ow % 2) * 32;
+        end
+    endfunction
+    function automatic integer rq_word(input integer m);      // the operand word of reduction m (-1: a generic slot)
+        integer ow;
+        reg [11:0] e;
+        begin
+            rq_word = -1;
+            for (ow = 0; ow < 72; ow = ow + 1) begin
+                e = kara_pkg::OPW_TAB[ow*12 +: 12];
+                if (e[11] && e[10:5] == m) rq_word = ow;
+            end
+        end
+    endfunction
 
     // clean slots: the level-1 lanes whose ARX value in a Monolith program is 0 (the step-1 lane of an input lane, and the
     // Monolith programs drive 0 on the block lanes) and that no ARX program writes with an add -> XOR: 0 2 4 6 20 21 and
@@ -163,10 +195,10 @@
     endfunction
 
     // generic lanes (closed forms, no loops); level 1 holds the clean slots and the chain heads only
-    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 0 6 4 14 14 5
+    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 0 4 4 14 14 5
         begin
             case (lv)
-                1: gfree = 0;  2: gfree = 6;  3: gfree = 4;  4, 5: gfree = 14;
+                1: gfree = 0;  2, 3: gfree = 4;  4, 5: gfree = 14;
                 default: gfree = 5;
             endcase
         end
@@ -174,9 +206,9 @@
     function automatic integer gbelow(input integer lv);      // generic lanes of one block at the levels below lv
         begin
             case (lv)
-                1, 2: gbelow = 0;  3: gbelow = 6;
-                4: gbelow = 10;  5: gbelow = 24;  6: gbelow = 38;
-                default: gbelow = 43;
+                1, 2: gbelow = 0;  3: gbelow = 4;
+                4: gbelow = 8;  5: gbelow = 22;  6: gbelow = 36;
+                default: gbelow = 41;
             endcase
         end
     endfunction
@@ -184,7 +216,7 @@
         begin
             case (lv)
                 1:    gidx = -1;
-                2:    gidx = (l == 1 || l == 2) ? l - 1 : (l == 5 || l == 6) ? l - 3 : (l >= 20) ? l - 16 : -1;
+                2:    gidx = (l == 1) ? 0 : (l == 5) ? 1 : (l >= 20) ? l - 18 : -1;
                 3:    gidx = (l == 3) ? 0 : (l == 7) ? 1 : (l >= 20) ? l - 18 : -1;
                 4:    gidx = (l == 3) ? 0 : (l >= 7 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
                 5:    gidx = (l == 1) ? 0 : (l == 5) ? 1 : (l >= 8 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
@@ -196,7 +228,7 @@
         begin
             case (lv)
                 1:    glane = (k < 4) ? 2 * k : k + 16;
-                2:    glane = (k < 2) ? k + 1 : (k < 4) ? k + 3 : k + 16;
+                2:    glane = (k == 0) ? 1 : (k == 1) ? 5 : k + 18;
                 3:    glane = (k == 0) ? 3 : (k == 1) ? 7 : k + 18;
                 4:    glane = (k == 0) ? 3 : (k < 10) ? k + 6 : k + 8;
                 5:    glane = (k == 0) ? 1 : (k == 1) ? 5 : (k < 10) ? k + 6 : k + 8;
@@ -207,10 +239,10 @@
     function automatic integer gpos(input integer v);         // first bit of generic slot v in the PE vector
         integer g, nb, r, lv, rr;
         begin
-            g  = (v < 5 * 43) ? 0 : 1;
+            g  = (v < 5 * 41) ? 0 : 1;
             nb = (g == 0) ? 5 : 4;
-            r  = (g == 0) ? v : v - 5 * 43;
-            lv = (r < nb * 6) ? 2 : (r < nb * 10) ? 3 : (r < nb * 24) ? 4 : (r < nb * 38) ? 5 : 6;
+            r  = (g == 0) ? v : v - 5 * 41;
+            lv = (r < nb * 4) ? 2 : (r < nb * 8) ? 3 : (r < nb * 22) ? 4 : (r < nb * 36) ? 5 : 6;
             rr = r - nb * gbelow(lv);
             gpos = g * 6 * 5 * PM_LW + (lv - 1) * nb * PM_LW + ((rr / gfree(lv)) * 22 + glane(lv, rr % gfree(lv))) * 64;
         end
@@ -237,8 +269,10 @@
             nb = (g == 0) ? 5 : 4;
             k  = gidx(lv, l);
             lane_slot = -1;
-            if (k >= 0) begin
-                v = g * 5 * 43 + nb * gbelow(lv) + b * gfree(lv) + k;
+            if (op_lane(g, lv, b, l) >= 0) begin
+                lane_slot = OP0 + op_lane(g, lv, b, l);
+            end else if (k >= 0) begin
+                v = g * 5 * 41 + nb * gbelow(lv) + b * gfree(lv) + k;
                 if (v < NV) lane_slot = v;
             end else if (lv == 1 && chidx(l) >= 0) begin
                 v = g * 5 * 10 + b * 10 + chidx(l);
