@@ -18,12 +18,14 @@
 //  * every other register is selected on a generic lane: a lane whose ARX value in no program is an XOR of a sum of the
 //    same step (the select sits after an ARX path without the add -> XOR depth: timing), no sum lane, no lane holding a
 //    lent delay, no chain cell:
-//      level 1: 0 2 4 6 20 21 | 2: 1 2 5 6 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 7 18..21
-//    (49 per block).
+//      level 2: 1 2 5 6 20 21 | 3: 3 7 20 21 | 4: 3 7..15 18..21 | 5: 1 5 8..15 18..21 | 6: 7 18..21 (43 per block;
+//      level 1 holds the clean slots and the chain heads)
 //      generic slots: private adders without delays | the lent delays that are not free (d1, then d2, then d3) | the 41
-//      reductions | br (16) | the 16 K constants | the 16 outputs | the 15 squarer outputs | the 15 squarer first stages
-//      (4 slots each) | the packed slots (the bits above 31 of the lent sums and their delays, the state's r); then the
-//      chain heads.
+//      reductions | br (16) | the 16 K constants | the 16 outputs | the first stage's 4th slot of squarers 13..15 | the
+//      packed slots (the bits above 31 of the lent sums and their delays, the state's r); then the chain heads; then the
+//      clean slots (the squarers, below).
+//  * the chain heads of xb1 (the state after Bars, from the datapath's input lanes: 0 in the ARX programs) and the clean
+//    slots are written mn | an (no select, unit18_shared).
     localparam int PM_NN = kara_pkg::NN;
     localparam int PM_LW = 22 * 64;                           // bits of one block at one level
 
@@ -75,8 +77,7 @@
     localparam int V_BR  = V_RQ + 41;
     localparam int V_KC  = V_BR + 16;
     localparam int V_OUT = V_KC + 16;
-    localparam int V_SQ  = V_OUT + 16;                        // squarer i = 1..15: output at V_SQ + i - 1,
-    localparam int V_S1  = V_SQ + 15;                         // first stage (224 bits) at V_S1 + 4 (i - 1) + 0..3
+    localparam int V_S4  = V_OUT + 16;                        // squarers 13..15: the first stage's 4th slot (the rest: clean slots)
     // packed slots (bit fields, several registers per slot): the bits above 31 of each lent sum and of its moved delays
     // (R_HI: first bit of node id's fields), then the state's r at levels 1..RRN (9 bits each)
     function automatic [(PM_NN+1)*12-1:0] hranks(input integer dummy);
@@ -114,19 +115,58 @@
     localparam logic [(PM_NN+1)*12-1:0] R_HI = hranks(0);
     localparam int NHB   = R_HI[PM_NN*12 +: 12];
     localparam int RRN   = kclast(0) - 2;                     // r at levels 1..RRN (the K constants read r two levels early)
-    localparam int V_PK  = V_S1 + 60;
+    localparam int V_PK  = V_S4 + 3;
     localparam int NPK   = (NHB + 9 * RRN + 63) / 64;
     localparam int NV    = V_PK + NPK;
     localparam int C_LF  = NPA;                               // chains
     localparam int C_XB  = C_LF + NLF;
     localparam int NC    = C_XB + 16;
-    localparam int NS    = NV + NC;                           // selected slots: generic lanes, then the chain heads
+    localparam int NCL   = 72;                                // clean slots (level 1, 8 lanes per block)
+    localparam int CL0   = NV + NC;
+    localparam int NS    = NV + NC + NCL;                     // slots: generic lanes, the chain heads, the clean slots
 
-    // generic lanes (closed forms, no loops)
-    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 6 6 4 14 14 5
+    // clean slots: the level-1 lanes whose ARX value in a Monolith program is 0 (the step-1 lane of an input lane, and the
+    // Monolith programs drive 0 on the block lanes) and that no ARX program writes with an add -> XOR: 0 2 4 6 20 21 and
+    // 3 7 (copy 0) / 1 5 (copy 1). A register there whose Monolith value is 0 in the ARX programs (the squarers: their
+    // input is gated by the state's valid bit, and the output by the enable) is written mn | an: an OR, no select.
+    // Clean slot k: group k < 40 ? 0 : 1, block (k mod 40) / 8, lane clane((k mod 40) % 8). Squarer i = 1..15: output at
+    // k = i - 1, first-stage slots 0..2 at 15 + 3 (i - 1) + j, slot 3 at 60 + i - 1 (i <= 12; 13..15: generic V_S4).
+    function automatic integer clane(input integer j, input integer cp);
+        begin
+            clane = (j < 4) ? 2 * j : (j < 6) ? j + 16 : (cp == 0) ? ((j == 6) ? 3 : 7) : ((j == 6) ? 1 : 5);
+        end
+    endfunction
+    function automatic integer clpos(input integer k, input integer cp);       // first bit of clean slot k
+        integer g, r;
+        begin
+            g = (k < 40) ? 0 : 1;
+            r = (g == 0) ? k : k - 40;
+            clpos = g * 6 * 5 * PM_LW + ((r / 8) * 22 + clane(r % 8, cp)) * 64;
+        end
+    endfunction
+    function automatic integer lane_clean(input integer g, input integer lv, input integer b, input integer l, input integer cp);
+        integer j;
+        begin
+            lane_clean = -1;
+            if (lv == 1)
+                for (j = 0; j < 8; j = j + 1)
+                    if (clane(j, cp) == l) lane_clean = (g == 0 ? 0 : 40) + b * 8 + j;
+        end
+    endfunction
+    function automatic integer sq_clean(input integer i, input integer j);    // squarer i: clean slot of output (j = -1)
+        begin                                                                  // / first-stage slot j (-1: generic)
+            if (j < 0) sq_clean = i - 1;
+            else if (j < 3) sq_clean = 15 + 3 * (i - 1) + j;
+            else if (i <= 12) sq_clean = 60 + i - 1;
+            else sq_clean = -1;
+        end
+    endfunction
+
+    // generic lanes (closed forms, no loops); level 1 holds the clean slots and the chain heads only
+    function automatic integer gfree(input integer lv);       // generic lanes of one block at level lv: 0 6 4 14 14 5
         begin
             case (lv)
-                1, 2: gfree = 6;  3: gfree = 4;  4, 5: gfree = 14;
+                1: gfree = 0;  2: gfree = 6;  3: gfree = 4;  4, 5: gfree = 14;
                 default: gfree = 5;
             endcase
         end
@@ -134,16 +174,16 @@
     function automatic integer gbelow(input integer lv);      // generic lanes of one block at the levels below lv
         begin
             case (lv)
-                1: gbelow = 0;   2: gbelow = 6;   3: gbelow = 12;
-                4: gbelow = 16;  5: gbelow = 30;  6: gbelow = 44;
-                default: gbelow = 49;
+                1, 2: gbelow = 0;  3: gbelow = 6;
+                4: gbelow = 10;  5: gbelow = 24;  6: gbelow = 38;
+                default: gbelow = 43;
             endcase
         end
     endfunction
     function automatic integer gidx(input integer lv, input integer l);       // generic index of lane l (-1: none)
         begin
             case (lv)
-                1:    gidx = (l < 8 && l % 2 == 0) ? l / 2 : (l >= 20) ? l - 16 : -1;
+                1:    gidx = -1;
                 2:    gidx = (l == 1 || l == 2) ? l - 1 : (l == 5 || l == 6) ? l - 3 : (l >= 20) ? l - 16 : -1;
                 3:    gidx = (l == 3) ? 0 : (l == 7) ? 1 : (l >= 20) ? l - 18 : -1;
                 4:    gidx = (l == 3) ? 0 : (l >= 7 && l <= 15) ? l - 6 : (l >= 18) ? l - 8 : -1;
@@ -167,10 +207,10 @@
     function automatic integer gpos(input integer v);         // first bit of generic slot v in the PE vector
         integer g, nb, r, lv, rr;
         begin
-            g  = (v < 5 * 49) ? 0 : 1;
+            g  = (v < 5 * 43) ? 0 : 1;
             nb = (g == 0) ? 5 : 4;
-            r  = (g == 0) ? v : v - 5 * 49;
-            lv = (r < nb * 6) ? 1 : (r < nb * 12) ? 2 : (r < nb * 16) ? 3 : (r < nb * 30) ? 4 : (r < nb * 44) ? 5 : 6;
+            r  = (g == 0) ? v : v - 5 * 43;
+            lv = (r < nb * 6) ? 2 : (r < nb * 10) ? 3 : (r < nb * 24) ? 4 : (r < nb * 38) ? 5 : 6;
             rr = r - nb * gbelow(lv);
             gpos = g * 6 * 5 * PM_LW + (lv - 1) * nb * PM_LW + ((rr / gfree(lv)) * 22 + glane(lv, rr % gfree(lv))) * 64;
         end
@@ -198,7 +238,7 @@
             k  = gidx(lv, l);
             lane_slot = -1;
             if (k >= 0) begin
-                v = g * 5 * 49 + nb * gbelow(lv) + b * gfree(lv) + k;
+                v = g * 5 * 43 + nb * gbelow(lv) + b * gfree(lv) + k;
                 if (v < NV) lane_slot = v;
             end else if (lv == 1 && chidx(l) >= 0) begin
                 v = g * 5 * 10 + b * 10 + chidx(l);

@@ -29,19 +29,35 @@ module unit18_shared (
     logic [PB-1:0]    pr0, an0, d0, pr1, an1, d1;
     logic [NS*64-1:0] mn0, ms0, mn1, ms1;
     // the PE registers: on a Monolith register's free lane the Monolith value while a Monolith state enters its level,
-    // everywhere else (the sum lanes included: the same adder outputs) the ARX value
+    // everywhere else (the sum lanes included: the same adder outputs) the ARX value. On the clean slots and the xb1 chain
+    // heads (level 1) the OR of the two: the Monolith programs drive 0 on the block lanes (their step-1 ARX value there is
+    // that input) and those Monolith values are 0 in the ARX programs (pe_map.svh).
     generate
         for (genvar g = 0; g < 2; g++) begin : g_grp
             for (genvar lv = 1; lv <= 6; lv++) begin : g_lv
                 for (genvar b = 0; b < (g == 0 ? 5 : 4); b++) begin : g_blk
                     for (genvar l = 0; l < BL; l++) begin : g_lane
                         localparam int P = (g == 0 ? 0 : G0) + (lv - 1) * (g == 0 ? 5 : 4) * BL * 64 + (b * BL + l) * 64;
-                        localparam int U = lane_slot(g, lv, b, l);
-                        if (U >= 0) begin : g_m
+                        localparam int U  = lane_slot(g, lv, b, l);
+                        localparam int K0 = lane_clean(g, lv, b, l, 0);
+                        localparam int K1 = lane_clean(g, lv, b, l, 1);
+                        localparam bit XB = (U >= NV + C_XB) && (U < NV + NC);    // an xb1 chain head
+                        if (K0 >= 0) begin : g_c0                 // clean slot: the Monolith value is 0 in the ARX programs,
+                            assign d0[P +: 64] = mn0[(CL0 + K0)*64 +: 64] | an0[P +: 64];   // the ARX value 0 in the Monolith ones
+                        end else if (U >= 0 && XB) begin : g_x0
+                            assign d0[P +: 64] = mn0[U*64 +: 64] | an0[P +: 64];
+                        end else if (U >= 0) begin : g_m0
                             assign d0[P +: 64] = (ms0[U*64 +: 64] & mn0[U*64 +: 64]) | (~ms0[U*64 +: 64] & an0[P +: 64]);
-                            assign d1[P +: 64] = (ms1[U*64 +: 64] & mn1[U*64 +: 64]) | (~ms1[U*64 +: 64] & an1[P +: 64]);
-                        end else begin : g_a
+                        end else begin : g_a0
                             assign d0[P +: 64] = an0[P +: 64];
+                        end
+                        if (K1 >= 0) begin : g_c1
+                            assign d1[P +: 64] = mn1[(CL0 + K1)*64 +: 64] | an1[P +: 64];
+                        end else if (U >= 0 && XB) begin : g_x1
+                            assign d1[P +: 64] = mn1[U*64 +: 64] | an1[P +: 64];
+                        end else if (U >= 0) begin : g_m1
+                            assign d1[P +: 64] = (ms1[U*64 +: 64] & mn1[U*64 +: 64]) | (~ms1[U*64 +: 64] & an1[P +: 64]);
+                        end else begin : g_a1
                             assign d1[P +: 64] = an1[P +: 64];
                         end
                     end

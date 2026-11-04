@@ -82,6 +82,14 @@ module mono_dp18 #(
     end else begin : LB \
         always_ff @(posedge clk) QOUT <= DIN; \
     end
+    // a register of W bits on clean slot K (PB > 0 only): written mn | the ARX value (unit18_shared), no select
+`define MCLN(K, W, DIN, QOUT) \
+    assign mn[(CL0 + (K))*64 +: (W)] = (DIN); \
+    assign ms[(CL0 + (K))*64 +: 64] = '0; \
+    if ((W) < 64) begin \
+        assign mn[(CL0 + (K))*64 + (W) +: 64 - (W)] = '0; \
+    end \
+    assign QOUT = mq[clpos(K, CP) +: (W)];
     // delay K of chain CI: the ARX pass of the chain's lane (PB > 0), else a register of the datapath
 `define MFOL(CI, K, W, DIN, QOUT) \
     if (PB > 0) begin \
@@ -171,20 +179,26 @@ module mono_dp18 #(
             logic [61:0] sq;
             logic [30:0] cs, cc, t;
             if (PB > 0) begin : g_sqx                        // the square's registers in the PE vector: stage 1 (level 2,
-                logic [61:0]  sqd, sqq;                      // four slots) and the output (level 3)
-                logic [232:0] s1d, s1q;
-                logic [223:0] s1c, s1cq;                     // a = b (a square): 7 first-stage bits repeat others, 2 are 0
-                alu_mul31_en_p2 #(.EXT(1)) u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq),
-                    .yd(sqd), .yq(sqq), .s1d(s1d), .s1q(s1q));
+                logic [61:0]  sqd, sqq;                      // four slots) and the output (level 3), on clean slots: the
+                logic [232:0] s1d, s1q;                      // enable is the state's valid bit too and gates operand a
+                logic [223:0] s1c, s1cq;                     // (all partial products 0), so both are 0 in the ARX programs
+                logic         env;                           // a = b (a square): 7 first-stage bits repeat others, 2 are 0
+                assign env = en2 && lsel[i % NMC][2];
+                alu_mul31_en_p2 #(.EXT(1)) u_sq (.clk(clk), .en(env), .a(xb1[(i-1)*31 +: 31] & {31{env}}),
+                    .b(xb1[(i-1)*31 +: 31]), .y(sq), .yd(sqd), .yq(sqq), .s1d(s1d), .s1q(s1q));
                 assign s1c = {s1d[232:231], s1d[229:228], s1d[226:225], s1d[222:212], s1d[210:200], s1d[198:11], s1d[10:8],
                               s1d[6:5], s1d[3:2], s1d[0]};
                 assign s1q = {s1cq[223:222], s1cq[222:221], s1cq[220], s1cq[221], s1cq[219:218], s1cq[218], s1cq[219],
                               s1cq[217:207], 1'b0, s1cq[206:196], 1'b0, s1cq[195:5], s1cq[7], s1cq[4:3], s1cq[4], s1cq[2:1],
                               s1cq[1:0]};
-                `MREG(V_SQ + i - 1, 62, 3, i, sqd, sqq)
+                `MCLN(sq_clean(i, -1), 62, sqd, sqq)
                 for (genvar j = 0; j < 4; j++) begin : g_s1
                     localparam int SW = (j < 3) ? 64 : 224 - 3 * 64;
-                    `MREG(V_S1 + 4 * (i - 1) + j, SW, 2, i, s1c[j*64 +: SW], s1cq[j*64 +: SW])
+                    if (sq_clean(i, j) >= 0) begin : g_c
+                        `MCLN(sq_clean(i, j), SW, s1c[j*64 +: SW], s1cq[j*64 +: SW])
+                    end else begin : g_g
+                        `MREG(V_S4 + i - 13, SW, 2, i, s1c[j*64 +: SW], s1cq[j*64 +: SW])
+                    end
                 end
             end else begin : g_sq
                 alu_mul31_en_p2 u_sq (.clk(clk), .en(en2), .a(xb1[(i-1)*31 +: 31]), .b(xb1[(i-1)*31 +: 31]), .y(sq));
@@ -409,4 +423,5 @@ module mono_dp18 #(
 `undef MHEAD
 `undef MFOL
 `undef MPK
+`undef MCLN
 endmodule
