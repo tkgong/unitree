@@ -183,9 +183,11 @@ module mono_dp18 #(
                 logic [232:0] s1d, s1q;                      // enable is the state's valid bit too and gates operand a
                 logic [223:0] s1c, s1cq;                     // (all partial products 0), so both are 0 in the ARX programs
                 logic         env;                           // a = b (a square): 7 first-stage bits repeat others, 2 are 0
-                assign env = en2 && lsel[i % NMC][2];
-                alu_mul31_en_p2 #(.EXT(1)) u_sq (.clk(clk), .en(env), .a(xb1[(i-1)*31 +: 31] & {31{env}}),
-                    .b(xb1[(i-1)*31 +: 31]), .y(sq), .yd(sqd), .yq(sqq), .s1d(s1d), .s1q(s1q));
+                logic [30:0]  xg;                            // (one gated operand for both: a and b stay the same signal,
+                assign env = en2 && lsel[i % NMC][2];        // so that synthesis keeps the square's symmetric products)
+                assign xg  = xb1[(i-1)*31 +: 31] & {31{env}};
+                alu_mul31_en_p2 #(.EXT(1)) u_sq (.clk(clk), .en(env), .a(xg), .b(xg), .y(sq), .yd(sqd), .yq(sqq),
+                    .s1d(s1d), .s1q(s1q));
                 assign s1c = {s1d[232:231], s1d[229:228], s1d[226:225], s1d[222:212], s1d[210:200], s1d[198:11], s1d[10:8],
                               s1d[6:5], s1d[3:2], s1d[0]};
                 assign s1q = {s1cq[223:222], s1cq[222:221], s1cq[220], s1cq[221], s1cq[219:218], s1cq[218], s1cq[219],
