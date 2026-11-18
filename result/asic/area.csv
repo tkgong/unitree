@@ -1,0 +1,6 @@
+unit,area_um2,flip_flops,registers_um2,alu_um2,other_um2,clock_ns,repair_period_ns,wns_ns
+UniTree unit (ChaCha20 + BLAKE3 + Monolith-31),1700243,151132,683419,792003,224821,1.0,0.995,0.00
+ChaCha20 standalone,775917,117981,533510,176275,66132,1.0,1.0,0.00
+BLAKE3 standalone,944174,148176,670052,183629,90493,1.0,1.0,0.00
+Monolith-31 standalone,994548,55446,250727,742197,1624,1.0,1.0,0.00
+Three standalone datapaths,2714640,321603,1454289,1102101,158250,1.0,1.0,0.00

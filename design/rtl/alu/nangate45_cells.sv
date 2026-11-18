@@ -1,0 +1,9 @@
+module AND2_X1  (input logic A1, input logic A2, output logic ZN); assign ZN = A1 & A2; endmodule
+module NAND2_X1 (input logic A1, input logic A2, output logic ZN); assign ZN = ~(A1 & A2); endmodule
+module NOR2_X1  (input logic A1, input logic A2, output logic ZN); assign ZN = ~(A1 | A2); endmodule
+module INV_X1   (input logic A, output logic ZN); assign ZN = ~A; endmodule
+module BUF_X1   (input logic A, output logic Z); assign Z = A; endmodule
+module XOR2_X1  (input logic A, input logic B, output logic Z); assign Z = A ^ B; endmodule
+module XNOR2_X1 (input logic A, input logic B, output logic ZN); assign ZN = ~(A ^ B); endmodule
+module AOI21_X1 (input logic A, input logic B1, input logic B2, output logic ZN); assign ZN = ~(A | (B1 & B2)); endmodule
+module OAI21_X1 (input logic A, input logic B1, input logic B2, output logic ZN); assign ZN = ~(A & (B1 | B2)); endmodule

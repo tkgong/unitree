@@ -1,0 +1,8 @@
+parameter,value
+banks per unit,4
+bank,256 x 256 bit two-port
+capacity per unit,32 KB
+energy per 256-bit access (pJ),101.2
+leakage per bank (mW),0.0752
+DRAM,2 GDDR6 channels per unit
+DRAM energy (pJ per bit),7.5

@@ -1,8 +1,0 @@
-mono hier: 186.17 s, 244636 KB
-shared hier: 340.68 s, 548736 KB
-mono flat: 593.41 s, 2499660 KB
-shared flat: 781.89 s, 3717920 KB
-blk_dp_nat: 347.53 s, 1256776 KB
-blk_dp_lent: 375.88 s, 1506976 KB
-blk_arx_lend: 80.90 s, 771528 KB
-blk_arx_priv: 100.60 s, 979348 KB

@@ -1,6 +1,3 @@
-# build products, rebuilt by the scripts next to them:
-#   dse/TOP/verify/*.dll    sh dse/TOP/build_bz.sh (clang++ on the Vitis ap_int headers, see dse/verify/build_dll.sh)
-#   RTL/baseline            cpu/build_cpu_linux.sh / build_gpu_trees2_linux.sh / cargo build --release (p3mono)
 *.dll
 *.exp
 *.lib
@@ -9,28 +6,29 @@
 *.pdb
 *.vvp
 *.pyc
-__pycache__/
-RTL/baseline/p3mono/target/
-RTL/baseline/cpu/obj/
-RTL/baseline/cpu/obj_linux/
-RTL/baseline/cpu/cpu_trees
-xsim.dir/
-*.jou
-*.wdb
-# memsim (Linux): sh memsim/build_linux.sh
 *.so
-memsim/ramsim/build/
-memsim/ramsim/build*.log
-memsim/ramsim/ext/
-memsim/ext/
-# RTL flows (dana336): synthesis / power work directories, simulation builds, generated traces
-RTL/syn/work*/
-RTL/test/obj_*/
-RTL/test/trp/
-RTL/test/*.out
-RTL/test/verilator_*.log
-RTL/test/ks_equiv.ys
-RTL/test/ks_equiv.log
-RTL/benchmark/power/vcd_act
+__pycache__/
 .vscode/
-RTL/test/regress/
+figures/
+docs/
+baseline/cpu/p3mono/target/
+baseline/cpu/obj/
+baseline/cpu/obj_linux/
+baseline/cpu/cpu_trees*.json
+baseline/cpu/RESULTS_*.md
+baseline/gpu/gpu_trees2*.json
+baseline/gpu/RESULTS_*.md
+design/memsim/ramsim/build/
+design/memsim/ramsim/build*.log
+design/memsim/ramsim/ext/
+design/memsim/ext/
+design/syn/work*/
+design/test/obj_*/
+design/test/trp/
+design/test/regress/
+design/test/*.out
+design/test/verilator_*.log
+design/test/ks_equiv.ys
+design/test/ks_equiv.log
+design/flow/power/vcd_act
+design/measure/out/

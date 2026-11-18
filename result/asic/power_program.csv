@@ -1,0 +1,5 @@
+workload,unit_w
+BLAKE3 Merkle,3.0521
+ChaCha20 GGM,2.7692
+BLAKE3 GGM,2.7620
+Monolith-31 Merkle,3.2384

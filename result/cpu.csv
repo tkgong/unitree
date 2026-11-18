@@ -1,0 +1,13 @@
+workload,leaves_log2,implementation,configuration,ns_per_node,w_above_idle
+BLAKE3 Merkle,10,official BLAKE3 C hash_many,16 processes with one tree each,1.716,179.6
+BLAKE3 Merkle,16,official BLAKE3 C hash_many,one tree at a time on the best of 1 / 8 / 16 threads,2.419,154.6
+BLAKE3 Merkle,21,official BLAKE3 C hash_many,one tree at a time on the best of 1 / 8 / 16 threads,3.654,168.7
+ChaCha20 GGM,10,AVX2,16 processes with one tree each,1.982,160.5
+ChaCha20 GGM,16,AVX2,one tree at a time on the best of 1 / 8 / 16 threads,2.381,162.2
+ChaCha20 GGM,21,AVX2,one tree at a time on the best of 1 / 8 / 16 threads,4.358,177.0
+BLAKE3 GGM,10,AVX2,16 processes with one tree each,1.533,167.5
+BLAKE3 GGM,16,AVX2,one tree at a time on the best of 1 / 8 / 16 threads,1.889,153.8
+BLAKE3 GGM,21,AVX2,one tree at a time on the best of 1 / 8 / 16 threads,4.260,162.8
+Monolith-31 Merkle,10,Plonky3 p3-monolith 0.8.0,16 processes with one tree each,58.300,164.2
+Monolith-31 Merkle,16,Plonky3 p3-monolith 0.8.0,16 processes with one tree each,56.473,117.8
+Monolith-31 Merkle,21,Plonky3 p3-monolith 0.8.0,one tree at a time on the best of 1 / 8 / 16 threads,52.211,237.2

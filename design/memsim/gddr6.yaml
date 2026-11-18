@@ -1,0 +1,54 @@
+Frontend:
+  impl: GEM5
+  clock_ratio: 1
+
+MemorySystem:
+  impl: GenericDRAM
+  clock_ratio: 1
+  DRAM:
+    impl: GDDR6
+    org:
+      preset: GDDR6_8Gb_x16
+      channel: 16
+      channel_width: 32
+      bankgroup: 4
+      bank: 4
+      row: 4096
+      column: 512
+      density: 8192
+    timing:
+      rate: 3500
+      nBL: 2
+      nCL: 24
+      nRCDRD: 26
+      nRCDWD: 16
+      nRP: 26
+      nRAS: 53
+      nRC: 79
+      nWR: 26
+      nRTP: 4
+      nCWL: 6
+      nCCDS: 2
+      nCCDL: 3
+      nRRDS: 7
+      nRRDL: 7
+      nWTRS: 9
+      nWTRL: 11
+      nFAW: 28
+      nRFC: 210
+      nRFCpb: 105
+      nRREFD: 14
+      nREFI: 3333
+
+  Controller:
+    impl: Generic
+    Scheduler:
+      impl: FRFCFS
+    RefreshManager:
+      impl: AllBank
+    plugins:
+      - ControllerPlugin:
+          impl: UnitreeCmdCount
+
+  AddrMapper:
+    impl: RoBaRaCoCh

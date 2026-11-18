@@ -1,0 +1,13 @@
+workload,leaves_log2,trees_per_program,program,check,ns_per_node,board_w,idle_w
+BLAKE3 Merkle,10,16384,zeknox tree builder,OK,0.241,236.8,48.8
+BLAKE3 Merkle,16,256,zeknox tree builder,OK,0.239,234.4,52.0
+BLAKE3 Merkle,21,8,zeknox tree builder,OK,0.240,230.8,50.6
+ChaCha20 GGM,10,16384,GPU-DPF hybrid,OK,0.516,218.3,52.0
+ChaCha20 GGM,16,256,GPU-DPF hybrid,OK,0.542,207.4,50.2
+ChaCha20 GGM,21,8,GPU-DPF hybrid,OK,0.546,213.7,50.3
+BLAKE3 GGM,10,16384,GPU-DPF hybrid,OK,0.507,206.2,49.7
+BLAKE3 GGM,16,256,GPU-DPF hybrid,OK,0.540,202.5,49.9
+BLAKE3 GGM,21,8,GPU-DPF hybrid,OK,0.542,197.8,49.4
+Monolith-31 Merkle,10,16384,zeknox tree builder,OK,1.515,230.5,49.4
+Monolith-31 Merkle,16,256,zeknox tree builder,OK,1.526,234.2,50.7
+Monolith-31 Merkle,21,8,zeknox tree builder,OK,1.533,232.4,50.4

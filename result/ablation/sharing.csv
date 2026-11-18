@@ -1,0 +1,9 @@
+design,area_um2,saved_percent,flip_flops,registers_um2,alu_um2,lend_selects_um2,other_logic_um2,select_overhead_um2,select_overhead_mux2_bits,wns_repair_ns,wns_signoff_ns
+ChaCha20 standalone,775917,,117981,533510,176275,0,66132,,,0.00,0.00
+BLAKE3 standalone,944174,,148176,670052,183629,0,90493,,,0.00,0.00
+Monolith-31 standalone,994548,,55446,250727,742197,0,1624,,,0.00,0.00
+Three standalone datapaths,2714640,,321603,1454289,1102101,0,158250,,,,
+Shared ALUs only,2482471,8.6,322571,1458666,777039,61990,184775,88516,47538,0.00,0.00
++ Shared registers,2068781,23.8,164683,744697,772969,61990,489125,392866,210991,-0.02,-0.02
++ Shared registers; ChaCha20 on the BLAKE3 register of the same lane,1907878,29.7,162516,734897,772969,61990,338021,241761,129840,0.00,0.00
++ Static operand binding,1700257,37.4,151132,683419,747280,44723,224835,111308,59779,-0.00,-0.00

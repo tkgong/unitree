@@ -1,0 +1,4 @@
+step,registers_um2,alu_um2,selects_um2,total_um2,points_of_standalone_sum
+share the ALUs,4377,-325062,88516,-232169,8.6
+share the registers,-713969,-4070,304350,-413690,15.2
+static operand binding,-61278,-25689,-281557,-368524,13.6
